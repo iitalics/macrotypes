@@ -6,6 +6,7 @@
 ;; shorthands
 (define id? identifier?)
 (define free-id=? free-identifier=?)
+(define stx-e syntax-e)
 
 (define (stx-cadr stx) (stx-car (stx-cdr stx)))
 (define (stx-caddr stx) (stx-cadr (stx-cdr stx)))
