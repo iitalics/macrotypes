@@ -91,9 +91,10 @@
 
   (let* ([e1 (generate-exv)]
          [e2 (generate-exv)]
-         [T (eval-type #`(→ #,e1 Unit))])
+         [T  (eval-type #`(→ #,e1 Unit))]
+         [T- (eval-type #`(→ #,e2 Unit))])
     (check-equal? (syntax->datum (exv-subst e2 e1 T))
-                  (syntax->datum (eval-type #`(→ #,e2 Unit)))))
+                  (syntax->datum T-)))
 
 
   )
@@ -190,9 +191,11 @@
                     (list '= e2 e1)
                     (list '▹ e2)
                     (list '= e1 (eval-type #'Unit))
-                    (list '▹ e1))])
-    (check-equal? (syntax->datum (ctx-subst ctx (eval-type #`(→ #,e1 (→ #,e2 #,e3)))))
-                  (syntax->datum (eval-type #`(→ Unit (→ Unit #,e3))))))
+                    (list '▹ e1))]
+         [T  (eval-type #`(→ #,e1 (→ #,e2 #,e3)))]
+         [T- (eval-type #`(→ Unit (→ Unit #,e3)))])
+    (check-equal? (syntax->datum (ctx-subst ctx T))
+                  (syntax->datum T-)))
 )
 
 
