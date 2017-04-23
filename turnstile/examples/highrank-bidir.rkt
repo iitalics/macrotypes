@@ -43,7 +43,7 @@
         [(~∀ (X) T1) `(∀ (,(syntax-e #'X))
                          ,(->dat #'T1))]
         [~Unit 'Unit]
-        [(~Exv _) '__]
+        [(~Exv ((~literal quote) uid)) `(^ ,(syntax-e #'uid))]
         [X:id (syntax-e #'X)]))
     (format "~a" (->dat T)))
 
@@ -176,7 +176,7 @@
         [x #'x] [y #'y])
     (check-equal? (ctx-split (list (list '▹ e1)
                                    (list ': x e2)
-                                   (list 'e (eval-type e2))
+                                   (list 'e e2)
                                    (list ': y e3)
                                    (list '▹ e3))
                              'e e2
@@ -247,8 +247,87 @@
     (check-not-false (well-formed? ctx T))
     (syntax-parse T
       [(~∀ (_) T-) (check-false (well-formed? ctx #'T-))]))
+  )
 
 
+;; subtyping & instantiation algorithms
+(begin-for-syntax
+
+  ; returns context where exvar a is instantiated such that
+  ;  a <: T   (if dir is '<)
+  ;  T <: a   (if dir is '>)
+  (define (inst/ctx ctx a T #:dir dir)
+    (define dir/inv (if (eq? dir '<) '> '<))
+    (syntax-parse T
+      ; InstSolve
+      [τ
+       #:when (and (monotype? #'τ)
+                   (well-formed? (second (ctx-split ctx 'e a)) #'τ))
+       (match (ctx-split ctx 'e a)
+         [(list Γ- Γ)
+          (append Γ-
+                  (list (list '= a #'τ))
+                  Γ)])]
+
+      ; InstReach
+      [(~and b (~Exv _))
+       #:when (match (ctx-split ctx 'e a)
+                [(list Γ- Γ) (ctx-contains-exv? Γ- #'b)])
+       (match (ctx-split ctx 'e #'b)
+         [(list Γ- Γ)
+          (append Γ-
+                  (list (list '= #'b a))
+                  Γ)])]
+
+      ; InstArr
+      [(~→ T1 T2)
+       (match-let* ([(list Γ- Γ) (ctx-split ctx 'e a)]
+                    [a1 (generate-exv)]
+                    [a2 (generate-exv)]
+                    [Γ2 (append Γ-
+                                (list (list '= a (eval-type #`(→ #,a1 #,a2)))
+                                      (list 'e a1)
+                                      (list 'e a2))
+                                Γ)]
+                    [Θ (inst/ctx Γ2 a1 #'T1 #:dir dir/inv)])
+         (inst/ctx Θ
+                   a2 (ctx-subst Θ #'T2)
+                   #:dir dir))]
+
+      ; InstALL
+      [(~∀ (X) T1)
+       (raise-syntax-error #f "instantiate foralls unimplemented"
+                           'inst/ctx)]
+
+      [_ (raise 'inst-error)]))
+
+  (let ([e1 (generate-exv #'A)]
+        [e2 (generate-exv #'B)]
+        [e3 (generate-exv #'C)]
+        [Un (eval-type #'Unit)])
+    (check-equal? (inst/ctx (list (list 'e e1))
+                            e1 Un
+                            #:dir '<)
+                  (list (list '= e1 Un)))
+    (check-equal? (inst/ctx (list (list 'e e2)
+                                  (list 'e e1))
+                            e1 e2
+                            #:dir '<)
+                  (list (list '= e2 e1)
+                        (list 'e e1)))
+    (check-equal? (inst/ctx (list (list 'e e2)
+                                  (list 'e e1))
+                            e2 e1 ; NOTE: flipped order; still assigns the LATER exv
+                            #:dir '<)
+                  (list (list '= e2 e1)
+                        (list 'e e1)))
+    (check-exn (symbols 'inst-error)
+               (lambda ()
+                 (inst/ctx (list (list 'e e2)
+                                 (list 'e e1))
+                           ; infinite type
+                           e1 (eval-type #`(→ #,e1 Unit))
+                           #:dir '<))))
 
   )
 
