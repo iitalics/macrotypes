@@ -20,7 +20,7 @@
 (define-type-constructor Exv #:arity = 1)
 
 (begin-for-syntax
-  ;; syntax property utils
+  ; attaching & getting syntax properties
   (define prop syntax-property)
   (define (attach s . l)
     (let trav ([s s] [l l])
@@ -30,22 +30,35 @@
                l-rest)]
         [(list) s])))
 
-  ;; type stuff
+  ; evaluate a type
   (define (eval-type s)
     ((current-type-eval) s))
 
-  ;; type to string
-  (define (type->string t)
+  ; convert type to string
+  (define (type->string T)
     (define ->dat
       (syntax-parser
-        [(~→ t u) `(→ ,(->dat #'t)
-                      ,(->dat #'u))]
-        [(~∀ (a) t) `(∀ (,(syntax-e #'a))
-                        ,(->dat #'t))]
+        [(~→ T1 T2) `(→ ,(->dat #'T1)
+                        ,(->dat #'T2))]
+        [(~∀ (X) T1) `(∀ (,(syntax-e #'X))
+                         ,(->dat #'T1))]
         [~Unit 'Unit]
-        [(~Exv _) `__]
-        [x:id (syntax-e #'x)]))
-    (format "~a" (->dat t))))
+        [(~Exv _) '__]
+        [X:id (syntax-e #'X)]))
+    (format "~a" (->dat T)))
+
+  ; a monotype is a type without quantifications
+  (define (monotype? T)
+    (syntax-parse T
+      [(~→ T1 T2) (and (monotype? #'T1)
+                       (monotype? #'T2))]
+      [(~∀ (X) _) #f]
+      [_ #t]))
+
+  (check-not-false (monotype? (eval-type #'(→ Unit Unit))))
+  (check-false (monotype? (eval-type #'(→ (∀ (x) x) Unit))))
+
+  )
 
 
 
@@ -71,8 +84,8 @@
 
   (let ([e1 (generate-exv)]
         [e2 (generate-exv)])
-    (check-true (exv=? e1 e1))
-    (check-true (exv=? e2 e2))
+    (check-not-false (exv=? e1 e1))
+    (check-not-false (exv=? e2 e2))
     (check-false (exv=? e1 e2))
     (check-false (exv=? #'e1 e1)))
 
@@ -104,10 +117,11 @@
 (begin-for-syntax
   ;; a context is a (listof ctx-elem)
   ;; a ctx-elem is one of
-  ;;   (list ': id ty)
-  ;;   (list '= exv ty)
-  ;;   (list '▹ exv)
-  ;;   (list 't exv)
+  ;;   (list ': id ty)       ; x : T
+  ;;   (list '= exv ty)      ; a = T
+  ;;   (list '▹ exv)         ; ▹ a
+  ;;   (list 'e exv)         ; a
+  ;;   (list 'v id)          ; X
 
   ; specializes equality for identifiers (bound-identifier=?) and exvars (Exvar=?)
   (define (exv/id=? a b)
@@ -162,10 +176,10 @@
         [x #'x] [y #'y])
     (check-equal? (ctx-split (list (list '▹ e1)
                                    (list ': x e2)
-                                   (list 't (eval-type e2))
+                                   (list 'e (eval-type e2))
                                    (list ': y e3)
                                    (list '▹ e3))
-                             't e2
+                             'e e2
                              ': y)
                   (list (list (list '▹ e1)
                               (list ': x e2))
@@ -186,7 +200,7 @@
          [e2 (generate-exv)]
          [e3 (generate-exv)]
          [ctx (list (list ': #'x e1)
-                    (list 't e3)
+                    (list 'e e3)
                     (list '▹ e3)
                     (list '= e2 e1)
                     (list '▹ e2)
@@ -196,7 +210,47 @@
          [T- (eval-type #`(→ Unit (→ Unit #,e3)))])
     (check-equal? (syntax->datum (ctx-subst ctx T))
                   (syntax->datum T-)))
-)
+
+  ; predicates for search contexts
+  (define (ctx-contains-var? ctx X)
+    (memf (match-lambda
+            [(list 'v Y) (bound-identifier=? X Y)]
+            [_ #f])
+          ctx))
+  (define (ctx-contains-exv? ctx e)
+    (memf (match-lambda
+            [(list 'e e2) (exv=? e e2)]
+            [_ #f])
+          ctx))
+
+  ; well-formedness check
+  (define (well-formed? ctx T)
+    (syntax-parse T
+      [~Unit #t]
+      [(~→ T1 T2)
+       (and (well-formed? ctx #'T1)
+            (well-formed? ctx #'T2))]
+      [(~∀ (X) T1)
+       (well-formed? (cons (list 'v #'X) ctx)
+                     #'T1)]
+      [_:id
+       (ctx-contains-var? ctx T)]
+      [(~Exv _)
+       (ctx-contains-exv? ctx T)]))
+
+  (let* ([e1 (generate-exv)]
+         [e2 (generate-exv)]
+         [ctx (list (list 'e e1))]
+         [T (eval-type #'(∀ (X) (→ X Unit)))])
+    (check-not-false (well-formed? ctx e1))
+    (check-false (well-formed? ctx e2))
+    (check-not-false (well-formed? ctx T))
+    (syntax-parse T
+      [(~∀ (_) T-) (check-false (well-formed? ctx #'T-))]))
+
+
+
+  )
 
 
 ;; inference helpers
