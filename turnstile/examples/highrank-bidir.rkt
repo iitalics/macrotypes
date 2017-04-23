@@ -203,13 +203,19 @@
   ;  a <: T   (if dir is '<)
   ;  T <: a   (if dir is '>)
   (define (inst/ctx ctx a T #:dir dir)
+    (define dir/flip
+      (case dir
+        [(<) '>]
+        [(>) '<]
+        [else (error "dir must either '< or '>")]))
 
     (define-values (ctx/before-a ctx/after-a)
       (match ctx
         [(list after ...
                (list 'e (== a exv=?))
                before ...)
-         (values before after)]))
+         (values before after)]
+        [_ (raise 'inst-error)]))
 
     (syntax-parse T
       ; InstSolve
@@ -235,23 +241,42 @@
       [(~→ T1 T2)
        (let* ([a1 (generate-exv)]
               [a2 (generate-exv)]
-              [ctx- (append ctx/after-a
-                            (list (list '= a (eval-type #`(→ #,a1 #,a2)))
-                                  (list 'e a1)
-                                  (list 'e a2))
-                            ctx/before-a)]
-              [ctx-Θ (inst/ctx ctx- a1 #'T1
-                               #:dir (case dir
-                                       [(<) '>]
-                                       [(>) '<]))])
-         (inst/ctx ctx-Θ
-                   a2 (ctx-subst ctx-Θ #'T2)
+              [ctx- (inst/ctx (append ctx/after-a
+                                      (list (list '= a (eval-type #`(→ #,a1 #,a2)))
+                                            (list 'e a1)
+                                            (list 'e a2))
+                                      ctx/before-a)
+                              a1 #'T1
+                              #:dir dir/flip)])
+         (inst/ctx ctx-
+                   a2 (ctx-subst ctx- #'T2)
                    #:dir dir))]
 
-      ; InstALL
-      [(~∀ (X) T1)
-       (raise-syntax-error #f "instantiate foralls unimplemented"
-                           'inst/ctx)]
+      ; InstLAllR
+      [(~∀ (X) T1) #:when (symbol=? dir '<)
+       (match (inst/ctx (list* (list 'v #'X)
+                               ctx)
+                        a #'T1
+                        #:dir '<)
+         [(list ctx/after-X ...
+                (list 'v (== #'X bound-identifier=?))
+                ctx/before-X ...)
+          ctx/before-X]
+         [_ (raise 'inst-error)])]
+
+      ; InstRAllL
+      [(~∀ (X) T1) #:when (symbol=? dir '>)
+       (let ([x1 (generate-exv)])
+         (match (inst/ctx (list* (list 'e x1)
+                                 (list '▹ x1)
+                                 ctx)
+                          a (subst x1 #'X #'T1)
+                          #:dir '>)
+           [(list ctx/after-x ...
+                  (list '▹ (== x1 exv=?))
+                  ctx/before-x ...)
+            ctx/before-x]
+           [_ (raise 'inst-error)]))]
 
       [_ (raise 'inst-error)]))
 
