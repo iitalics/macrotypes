@@ -78,6 +78,7 @@
 
 
   ; substitute τ for a in e, if (exv=? x y)
+  ; copied from turnstile's subst because who knows how it works anyways
   (define (exv-subst τ a e)
     (syntax-parse e
       [(~Exv ((~literal quote) uid))
