@@ -133,60 +133,6 @@
       [else
        (equal? a b)]))
 
-
-  ; split a context in half by the specified key and second elem
-  ; returns a list of both halfs
-  (define (ctx-split-one ctx key snd)
-    (define-values (L R)
-      (splitf-at ctx
-                 (negate (lambda (e)
-                           (and (symbol=? (first e) key)
-                                (exv/id=? snd (second e)))))))
-    (list L (rest R)))
-
-  (let ([e1 (generate-exv)]
-        [e2 (generate-exv)])
-    (check-equal? (ctx-split-one (list (list '▹ e1)
-                                       (list ': #'x e2)
-                                       (list '▹ e2))
-                                 ': #'x)
-                  (list (list (list '▹ e1))
-                        (list (list '▹ e2)))))
-
-
-  ; split a context into parts by specifying multiple keys and elems
-  ; returns a list of all the subcontexts
-  (define (ctx-split ctx . keys)
-    (define (evens lst)
-      (if (null? lst) '()
-          (cons (car lst) (odds (cdr lst)))))
-    (define (odds lst)
-      (if (null? lst) '()
-          (evens (cdr lst))))
-    (foldr (lambda (key snd ctxs)
-             (append (ctx-split-one (first ctxs) key snd)
-                     (rest ctxs)))
-           (list ctx)
-           (evens keys)
-           (odds keys)))
-
-  (let ([e1 (generate-exv)]
-        [e2 (generate-exv)]
-        [e3 (generate-exv)]
-        [x #'x] [y #'y])
-    (check-equal? (ctx-split (list (list '▹ e1)
-                                   (list ': x e2)
-                                   (list 'e e2)
-                                   (list ': y e3)
-                                   (list '▹ e3))
-                             'e e2
-                             ': y)
-                  (list (list (list '▹ e1)
-                              (list ': x e2))
-                        (list)
-                        (list (list '▹ e3)))))
-
-
   ; apply substitutions in a context to a type
   (define (ctx-subst ctx T)
     (match ctx
@@ -257,41 +203,49 @@
   ;  a <: T   (if dir is '<)
   ;  T <: a   (if dir is '>)
   (define (inst/ctx ctx a T #:dir dir)
-    (define dir/inv (if (eq? dir '<) '> '<))
+
+    (define-values (ctx/before-a ctx/after-a)
+      (match ctx
+        [(list after ...
+               (list 'e (== a exv=?))
+               before ...)
+         (values before after)]))
+
     (syntax-parse T
       ; InstSolve
       [τ
        #:when (and (monotype? #'τ)
-                   (well-formed? (second (ctx-split ctx 'e a)) #'τ))
-       (match (ctx-split ctx 'e a)
-         [(list Γ- Γ)
-          (append Γ-
-                  (list (list '= a #'τ))
-                  Γ)])]
+                   (well-formed? ctx/before-a #'τ))
+       (append ctx/after-a
+               (list (list '= a #'τ))
+               ctx/before-a)]
 
       ; InstReach
       [(~and b (~Exv _))
-       #:when (match (ctx-split ctx 'e a)
-                [(list Γ- Γ) (ctx-contains-exv? Γ- #'b)])
-       (match (ctx-split ctx 'e #'b)
-         [(list Γ- Γ)
-          (append Γ-
+       #:when (ctx-contains-exv? ctx/after-a #'b)
+       (match ctx
+         [(list ctx/after-b ...
+                (list 'e (== #'b exv=?))
+                ctx/before-b ...)
+          (append ctx/after-b
                   (list (list '= #'b a))
-                  Γ)])]
+                  ctx/before-b)])]
 
       ; InstArr
       [(~→ T1 T2)
-       (match-let* ([(list Γ- Γ) (ctx-split ctx 'e a)]
-                    [a1 (generate-exv)]
-                    [a2 (generate-exv)]
-                    [Γ2 (append Γ-
-                                (list (list '= a (eval-type #`(→ #,a1 #,a2)))
-                                      (list 'e a1)
-                                      (list 'e a2))
-                                Γ)]
-                    [Θ (inst/ctx Γ2 a1 #'T1 #:dir dir/inv)])
-         (inst/ctx Θ
-                   a2 (ctx-subst Θ #'T2)
+       (let* ([a1 (generate-exv)]
+              [a2 (generate-exv)]
+              [ctx- (append ctx/after-a
+                            (list (list '= a (eval-type #`(→ #,a1 #,a2)))
+                                  (list 'e a1)
+                                  (list 'e a2))
+                            ctx/before-a)]
+              [ctx-Θ (inst/ctx ctx- a1 #'T1
+                               #:dir (case dir
+                                       [(<) '>]
+                                       [(>) '<]))])
+         (inst/ctx ctx-Θ
+                   a2 (ctx-subst ctx-Θ #'T2)
                    #:dir dir))]
 
       ; InstALL
