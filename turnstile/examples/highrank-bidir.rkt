@@ -53,36 +53,73 @@
 (begin-for-syntax
   (define next-ex-uid (box 0))
 
-  (define (generate-exv [id-stx #'a])
-    (define uid (unbox next-ex-uid))
-    (set-box! next-ex-uid (add1 uid))
-    (with-syntax ([uid/#%t (mk-type #`(quote #,uid))])
-      (eval-type (syntax/loc id-stx
-                   (Exv uid/#%t)))))
+  ; generate a unicode exvar
+  (define (generate-exv [src-id #'a])
+    (with-syntax ([uid/q* (mk-type #`(quote #,(if (identifier? src-id)
+                                                  (gensym (syntax-e src-id))
+                                                  (gensym 'ex))))])
+      (eval-type (syntax/loc src-id
+                   (Exv uid/q*)))))
 
-  (define (Exv=? e1 e2)
+  ; compare two syntax objects to see if they are identical exvars
+  (define (exv=? e1 e2)
     (syntax-parse (list e1 e2)
       #:literals (quote)
-      [((~Exv 'a) (~Exv 'b))
-       (equal? (syntax-e #'a) (syntax-e #'b))]
+      [((~Exv (quote a)) (~Exv (quote b)))
+       (eq? (syntax-e #'a) (syntax-e #'b))]
       [_ #f]))
+
+  (let ([e1 (generate-exv)]
+        [e2 (generate-exv)])
+    (check-true (exv=? e1 e1))
+    (check-true (exv=? e2 e2))
+    (check-false (exv=? e1 e2))
+    (check-false (exv=? #'e1 e1)))
+
+
+  ; substitute τ for a in e, if (exv=? x y)
+  (define (exv-subst τ a e)
+    (syntax-parse e
+      [(~Exv ((~literal quote) uid))
+       #:when (exv=? e a)
+       (transfer-stx-props τ (merge-type-tags (syntax-track-origin τ e #'uid)))]
+      [(esub ...)
+       #:with res (stx-map (λ (e1) (exv-subst τ a e1)) #'(esub ...))
+       (transfer-stx-props #'res e #:ctx e)]
+      [_ e]))
+
+  (let* ([e1 (generate-exv)]
+         [e2 (generate-exv)]
+         [T (eval-type #`(→ #,e1 Unit))])
+    (check-equal? (syntax->datum (exv-subst e2 e1 T))
+                  (syntax->datum (eval-type #`(→ #,e2 Unit)))))
+
 
   )
 
 
 ;; contexts
 (begin-for-syntax
+  ;; a context is a (listof ctx-elem)
+  ;; a ctx-elem is one of
+  ;;   (list ': id ty)
+  ;;   (list '= exv ty)
+  ;;   (list '▹ exv)
+  ;;   (list 't exv)
 
+  ; specializes equality for identifiers (bound-identifier=?) and exvars (Exvar=?)
   (define (exv/id=? a b)
     (cond
       [(and (identifier? a) (identifier? b))
        (bound-identifier=? a b)]
       [(and (Exv? a) (Exv? b))
-       (Exv=? a b)]
+       (exv=? a b)]
       [else
        (equal? a b)]))
 
+
   ; split a context in half by the specified key and second elem
+  ; returns a list of both halfs
   (define (ctx-split-one ctx key snd)
     (define-values (L R)
       (splitf-at ctx
@@ -102,6 +139,7 @@
 
 
   ; split a context into parts by specifying multiple keys and elems
+  ; returns a list of all the subcontexts
   (define (ctx-split ctx . keys)
     (define (evens lst)
       (if (null? lst) '()
@@ -118,18 +156,42 @@
 
   (let ([e1 (generate-exv)]
         [e2 (generate-exv)]
-        [e3 (generate-exv)])
+        [e3 (generate-exv)]
+        [x #'x] [y #'y])
     (check-equal? (ctx-split (list (list '▹ e1)
-                                   (list ': 'x e2)
+                                   (list ': x e2)
                                    (list 't (eval-type e2))
-                                   (list ': 'y e3)
+                                   (list ': y e3)
                                    (list '▹ e3))
                              't e2
-                             ': 'y)
+                             ': y)
                   (list (list (list '▹ e1)
-                              (list ': 'x e2))
+                              (list ': x e2))
                         (list)
                         (list (list '▹ e3)))))
+
+
+  ; apply substitutions in a context to a type
+  (define (ctx-subst ctx T)
+    (match ctx
+      ['() T]
+      [(cons (list '= a A) ctx2)
+       (ctx-subst ctx2 (exv-subst A a T))]
+      [(cons _ ctx2)
+       (ctx-subst ctx2 T)]))
+
+  (let* ([e1 (generate-exv)]
+         [e2 (generate-exv)]
+         [e3 (generate-exv)]
+         [ctx (list (list ': #'x e1)
+                    (list 't e3)
+                    (list '▹ e3)
+                    (list '= e2 e1)
+                    (list '▹ e2)
+                    (list '= e1 (eval-type #'Unit))
+                    (list '▹ e1))])
+    (check-equal? (syntax->datum (ctx-subst ctx (eval-type #`(→ #,e1 (→ #,e2 #,e3)))))
+                  (syntax->datum (eval-type #`(→ Unit (→ Unit #,e3))))))
 )
 
 
