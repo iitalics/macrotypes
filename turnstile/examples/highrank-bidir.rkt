@@ -273,10 +273,9 @@
                           a (subst x1 #'X #'T1)
                           #:dir '>)
            [(list ctx/after-x ...
-                  (list '▹ (== x1 exv=?))
+                  (list '▹ (== x1 eq?))
                   ctx/before-x ...)
-            ctx/before-x]
-           [_ (raise 'inst-error)]))]
+            ctx/before-x]))]
 
       [_ (raise 'inst-error)]))
 
@@ -332,6 +331,85 @@
                  (inst/ctx (list (list 'e e1))
                            e1 Top
                            #:dir '<))))
+
+
+  ; under input context, if A can be a subtype of B, returns output context
+  ; otherwise raises 'subtype-error
+  (define (subtype ctx A B)
+    (syntax-parse (list A B)
+      ; Unit
+      [(~Unit ~Unit) ctx]
+
+      ; Var
+      [(X:id Y:id)
+       #:when (bound-identifier=? #'X #'Y)
+       #:when (ctx-contains-var? ctx #'X)
+       ctx]
+
+      ; Exvar
+      [((~Exv _) (~Exv _))
+       #:when (exv=? A B)
+       #:when (ctx-contains-exv? ctx A)
+       ctx]
+
+      ; -→
+      [((~→ A1 A2) (~→ B1 B2))
+       (let ([ctx2 (subtype ctx #'B1 #'A1)])
+         (subtype ctx2
+                  (ctx-subst ctx2 #'A2)
+                  (ctx-subst ctx2 #'B2)))]
+
+      ; ∀L
+      [((~∀ (X) A)  B)
+       (let ([x (generate-exv #'X)])
+         (match (subtype (list* (list 'e x)
+                                (list '▹ x)
+                                ctx)
+                         (subst x #'X #'A)
+                         #'B)
+           [(list ctx/after-x ...
+                  (list '▹ (== x eq?))
+                  ctx/before-x ...)
+            ctx/before-x]))]
+
+      ; ∀R
+      [(A  (~∀ (X) B))
+       (match (subtype (list* (list 'v #'X)
+                              ctx)
+                       #'A #'B)
+         [(list ctx/after-X ...
+                (list 'v (== #'X bound-identifier=?))
+                ctx/before-X ...)
+          ctx/before-X])]
+
+      ; InstantiateL
+      [((~Exv _) B)
+       #:when (ctx-contains-exv? ctx A)
+       (inst/ctx ctx A #'B #:dir '<)]
+
+      ; InstantiateR
+      [(A (~Exv _))
+       #:when (ctx-contains-exv? ctx B)
+       (inst/ctx ctx B #'A #:dir '>)]
+
+      [_ (raise 'subtype-error)]))
+
+  (let* ([e1 (generate-exv)]
+         [e2 (generate-exv)]
+         [Un (eval-type #'Unit)])
+    (match (subtype (list (list 'e e1)
+                          (list 'dummy))
+                    (eval-type #`(→ Unit Unit))
+                    (eval-type #`(→ Unit #,e1)))
+      [(list (list '= e t)
+             (list 'dummy))
+       (check-true (exv=? e e1))
+       (check-equal? (syntax->datum Un)
+                     (syntax->datum t))]
+      [_ (fail "output context is wrong")]))
+
+
+
 
   )
 
