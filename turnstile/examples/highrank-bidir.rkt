@@ -43,7 +43,7 @@
         [(~∀ (X) T1) `(∀ (,(syntax-e #'X))
                          ,(->dat #'T1))]
         [~Unit 'Unit]
-        [(~Exv ((~literal quote) uid)) `(^ ,(syntax-e #'uid))]
+        [(~Exv ((~literal quote) uid)) `(Exv ,(syntax-e #'uid))]
         [X:id (syntax-e #'X)]))
     (format "~a" (->dat T)))
 
@@ -199,10 +199,36 @@
 ;; subtyping & instantiation algorithms
 (begin-for-syntax
 
+  (struct exn:fail:inst exn:fail ())
+  (define (raise-fail-inst msg . args)
+    (raise (exn:fail:inst (apply format (cons msg args))
+                          (current-continuation-marks))))
+
+  (struct exn:fail:subtype exn:fail ())
+  (define (raise-fail-subtype msg . args)
+    (raise (exn:fail:subtype (apply format (cons msg args))
+                             (current-continuation-marks))))
+
+
+  (define (ctx->string ctx)
+    (string-join (map (lambda (elem)
+                        (~a (map (lambda (x)
+                                   (if (syntax? x)
+                                       (type->string x)
+                                       (~a x)))
+                                 elem)))
+                      ctx)
+                 " - "))
+
   ; returns context where exvar a is instantiated such that
   ;  a <: T   (if dir is '<)
   ;  T <: a   (if dir is '>)
   (define (inst/ctx ctx a T #:dir dir)
+    #;(printf "inst  ~a  ~a  ~a\n  ~a\n"
+            (type->string a)
+            dir
+            (type->string T)
+            (ctx->string ctx))
     (define dir/flip
       (case dir
         [(<) '>]
@@ -215,7 +241,8 @@
                (list 'e (== a exv=?))
                before ...)
          (values before after)]
-        [_ (raise 'inst-error)]))
+        [_ (raise-fail-inst "trying to inst exvar that doesn't exist: ~a"
+                            (type->string a))]))
 
     (syntax-parse T
       ; InstSolve
@@ -262,7 +289,7 @@
                 (list 'v (== #'X bound-identifier=?))
                 ctx/before-X ...)
           ctx/before-X]
-         [_ (raise 'inst-error)])]
+         [_ (raise-fail-inst "type variable disappeared after sub-inst")])]
 
       ; InstRAllL
       [(~∀ (X) T1) #:when (symbol=? dir '>)
@@ -277,13 +304,13 @@
                   ctx/before-x ...)
             ctx/before-x]))]
 
-      [_ (raise 'inst-error)]))
+      [_ (raise-fail-inst "no matching clause")]))
 
   (let ([e1 (generate-exv #'A)]
         [e2 (generate-exv #'B)]
         [e3 (generate-exv #'C)]
         [Un (eval-type #'Unit)]
-        [Top (eval-type #'(∀ (X) X))])
+        [Bot (eval-type #'(∀ (X) X))])
     ; simple assignment
     (check-equal? (inst/ctx (list (list 'e e1)
                                   (list 'dummy))
@@ -313,7 +340,7 @@
                         (list 'e e1)
                         (list 'dummy 2)))
     ; infinite type
-    (check-exn (symbols 'inst-error)
+    (check-exn exn:fail:inst?
                (lambda ()
                  (inst/ctx (list (list 'e e2)
                                  (list 'e e1))
@@ -323,19 +350,23 @@
     ; e.g. [ (∀ (X) X) <: a ]  is a no-op
     ; but  [ (∀ (X) X) :> a ]  is impossible
     (check-equal? (inst/ctx (list (list 'e e1))
-                            e1 Top
+                            e1 Bot
                             #:dir '>)
                   (list (list 'e e1)))
-    (check-exn (symbols 'inst-error)
+    (check-exn exn:fail:inst?
                (lambda ()
                  (inst/ctx (list (list 'e e1))
-                           e1 Top
+                           e1 Bot
                            #:dir '<))))
 
 
   ; under input context, if A can be a subtype of B, returns output context
   ; otherwise raises 'subtype-error
   (define (subtype ctx A B)
+    #;(printf "subtype  ~a  <:  ~a\n  ~a\n"
+            (type->string A)
+            (type->string B)
+            (ctx->string ctx))
     (syntax-parse (list A B)
       ; Unit
       [(~Unit ~Unit) ctx]
@@ -392,7 +423,7 @@
        #:when (ctx-contains-exv? ctx B)
        (inst/ctx ctx B #'A #:dir '>)]
 
-      [_ (raise 'subtype-error)]))
+      [_ (raise-fail-subtype "incompatible")]))
 
   (let* ([e1 (generate-exv)]
          [e2 (generate-exv)]
@@ -408,7 +439,7 @@
                      (syntax->datum t))]
       [_ (fail "output context is wrong")])
 
-    (check-exn (symbols 'inst-error)
+    (check-exn exn:fail:inst?
                (lambda ()
                  (subtype (list (list 'e e1))
                           (eval-type #`(∀ (X) (→ X X)))
@@ -417,7 +448,12 @@
      (lambda ()
        (subtype (list)
                 (eval-type #`(∀ (X) (→ X X)))
-                (eval-type #`(→ Unit Unit))))))
+                (eval-type #`(→ Unit Unit)))))
+
+    (displayln "\nalpha-equiv test.")
+    (displayln (subtype '()
+                        (eval-type #'(∀ (X) X))
+                        (eval-type #'(∀ (Y) Y)))))
 
 
   )
