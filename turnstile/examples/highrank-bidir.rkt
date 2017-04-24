@@ -6,9 +6,9 @@
 
 
 (provide (rename-out [mod-begin #%module-begin]
-                     [top #%top-interaction])
-         (type-out Unit)
-         unit
+                     [top #%top-interaction]
+                     [app #%app])
+         (type-out Unit → ∀)
          ann)
 
 
@@ -467,6 +467,50 @@
   (define (set-ctx-of s ctx)
     (syntax-property s 'Γ ctx))
 
+  (define (subtype/handlers ctx A B #:src src)
+    (with-handlers
+      ([exn:fail:inst?
+        (lambda (ex)
+          (raise-syntax-error #f
+                              (format "inst error: ~a"
+                                      (exn-message ex))
+                              src))]
+       [exn:fail:subtype?
+        (lambda (ex)
+          (raise-syntax-error #f
+                              (format "subtype error: ~a"
+                                      (exn-message ex))
+                              src))])
+      (subtype ctx A B)))
+
+  ; apply these functions around checking
+  (define (unforall/pre e T)
+    (syntax-parse T
+      [(~∀ (X) T1)
+       (unforall/pre (set-ctx-of e (list* (list 'v #'X)
+                                          (ctx-of e)))
+                     #'T1)]
+      [_ e]))
+
+  (define (unforall/post e e* T)
+    (syntax-parse T
+      [(~∀ (X) _)
+       (match (ctx-of e* (ctx-of e))
+         [(list ctx/after ...
+                (list 'v (== #'X bound-identifier=?))
+                ctx/before ...)
+          (set-ctx-of e* ctx/before)])]
+      [_ e*]))
+
+  (define (checking-fallback e B)
+    (syntax-parse (infer (list (syntax-property e 'expected-type #f)))
+      [(() () e+ (A))
+       (let* ([ctx (ctx-of #'e+ (ctx-of e))])
+         (subtype/handlers ctx
+                           (ctx-subst ctx #'A)
+                           (ctx-subst ctx B)
+                           #:src e))]))
+
   )
 
 
@@ -486,17 +530,6 @@
               '#,(type->string #'T-))]])
 
 
-(define-typed-syntax unit
-  [(_) ≫
-   --------
-   [⊢ '() ⇒ Unit]]
-
-  [(_) ⇐ T ≫
-   #:when (Unit? #'T)
-   --------
-   [⊢ '()]])
-
-
 (define-typed-syntax ann
   [(_ e (~datum :) t) ≫
    #:with T (eval-type #'t)
@@ -504,3 +537,16 @@
    [⊢ e ≫ e- ⇐ T]
    --------
    [⊢ e- ⇒ T]])
+
+
+(define-typed-syntax app
+  [(_) ≫
+   --------
+   [⊢ '() ⇒ Unit]]
+
+  [(_) ⇐ T ≫
+   #:fail-unless (Unit? #'T)
+   (format "expected Unit type, got ~a"
+           (type->string #'T))
+   --------
+   [⊢ '()]])
