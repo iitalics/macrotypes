@@ -490,17 +490,17 @@
        (unforall/pre (set-ctx-of e (list* (list 'v #'X)
                                           (ctx-of e)))
                      #'T1)]
-      [_ e]))
+      [_ (list e T)]))
 
-  (define (unforall/post e e* T)
+  (define (unforall/post e* e- T)
     (syntax-parse T
       [(~∀ (X) _)
-       (match (ctx-of e* (ctx-of e))
+       (match (ctx-of e- (ctx-of e*))
          [(list ctx/after ...
                 (list 'v (== #'X bound-identifier=?))
                 ctx/before ...)
-          (set-ctx-of e* ctx/before)])]
-      [_ e*]))
+          (set-ctx-of e- ctx/before)])]
+      [_ e-]))
 
   (define (checking-fallback e B)
     (syntax-parse (infer (list (syntax-property e 'expected-type #f)))
@@ -533,20 +533,23 @@
 (define-typed-syntax ann
   [(_ e (~datum :) t) ≫
    #:with T (eval-type #'t)
-   #:with e* (set-ctx-of #'e (ctx-of this-syntax))
-   [⊢ e ≫ e- ⇐ T]
+   #:with (e* T*) (unforall/pre #'e #'T)
+   [⊢ e* ≫ e- ⇐ T*]
+   #:with e-* (unforall/post #'e* #'e- #'T)
    --------
-   [⊢ e- ⇒ T]])
+   [⊢ e-* ⇒ T]])
 
+; → ∀
 
 (define-typed-syntax app
+  [(_) ⇐ T ≫
+   #:do [(unless (Unit? #'T)
+           (raise-syntax-error #f (format "unexpected (), expecting type ~a"
+                                          (type->string #'T))
+                               this-syntax))]
+   --------
+   [⊢ '()]]
+
   [(_) ≫
    --------
-   [⊢ '() ⇒ Unit]]
-
-  [(_) ⇐ T ≫
-   #:fail-unless (Unit? #'T)
-   (format "expected Unit type, got ~a"
-           (type->string #'T))
-   --------
-   [⊢ '()]])
+   [⊢ '() ⇒ Unit]])
