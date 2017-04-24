@@ -538,9 +538,13 @@
 
       [_ (raise-syntax-error #f "failed to tyinfer/check??" e)]))
 
+
+  [current-typecheck-relation
+   (lambda (τgiv τexp)
+     (error (format "current typecheck relation ~a <: ~a"
+                    (type->string τgiv)
+                    (type->string τexp))))]
   )
-
-
 
 (define-syntax mod-begin
   (syntax-parser
@@ -583,13 +587,33 @@
 
 
 (define-typed-syntax lam
-  ; rule: -→I
-  [(_ (x) e) ⇐ (~→ A B) ≫
+  [(_ (x:id) e) ⇐ (~and T (~∀ (X) _)) ≫
    --------
-   [#:error "unimpl: -→I"]]
+   [≻ #,(raise-checking-fallback)]]
 
-  [(_) ⇐ T ≫
+  ; rule: -→I
+  [(_ (x:id) e) ⇐ (~→ A B) ≫
+   #:with uid (gensym (syntax-e #'x))
+   #:with e* (set-ctx-of #'e (list* (list ': (syntax-e #'uid))
+                                    (ctx-of #'e)))
+   #:with ((x-) e-) (tycheck #'e*
+                             #'B
+                             #:var-ctx #'([x : A]))
+   #:with e-* (match (ctx-of #'e- (ctx-of #'e))
+                [(list ctx/after ...
+                       (list ': (== (syntax-e #'uid)))
+                       ctx/before ...)
+                 (set-ctx-of #'e- ctx/before)])
+   --------
+   [⊢ e-*]]
+
+  [(_ (x:id) e) ⇐ T ≫
    #:when (not (Unit? #'T))
    --------
    [#:error (format "encountered lambda when expected type ~a"
                     (type->string #'T))]])
+
+; → ∀
+; (∀ (X) Unit)
+; (∀ (X) (→ Unit Unit))
+; (→ Unit Unit)
