@@ -247,7 +247,7 @@
                             (type->string a))]))
 
     (syntax-parse T
-      ; InstSolve
+      ; rule: InstLSolve / InstRSolve
       [τ
        #:when (and (monotype? #'τ)
                    (well-formed? ctx/before-a #'τ))
@@ -255,7 +255,7 @@
                (list (list '= a #'τ))
                ctx/before-a)]
 
-      ; InstReach
+      ; rule: InstLReach / InstRReach
       [(~and b (~Exv _))
        #:when (ctx-contains-exv? ctx/after-a #'b)
        (match ctx
@@ -266,7 +266,7 @@
                   (list (list '= #'b a))
                   ctx/before-b)])]
 
-      ; InstArr
+      ; rule: InstLArr / InstRArr
       [(~→ T1 T2)
        (let* ([a1 (generate-exv)]
               [a2 (generate-exv)]
@@ -281,7 +281,7 @@
                    a2 (ctx-subst ctx- #'T2)
                    #:dir dir))]
 
-      ; InstLAllR
+      ; rule: InstLAllR
       [(~∀ (X) T1) #:when (symbol=? dir '<)
        (match (inst/ctx (list* (list 'v #'X)
                                ctx)
@@ -293,7 +293,7 @@
           ctx/before-X]
          [_ (raise-fail-inst "type variable disappeared after sub-inst")])]
 
-      ; InstRAllL
+      ; rule: InstRAllL
       [(~∀ (X) T1) #:when (symbol=? dir '>)
        (let ([x1 (generate-exv)])
          (match (inst/ctx (list* (list 'e x1)
@@ -370,29 +370,29 @@
             (type->string B)
             (ctx->string ctx))
     (syntax-parse (list A B)
-      ; Unit
+      ; rule: Unit
       [(~Unit ~Unit) ctx]
 
-      ; Var
+      ; rule: Var
       [(X:id Y:id)
        #:when (bound-identifier=? #'X #'Y)
        #:when (ctx-contains-var? ctx #'X)
        ctx]
 
-      ; Exvar
+      ; rule: Exvar
       [((~Exv _) (~Exv _))
        #:when (exv=? A B)
        #:when (ctx-contains-exv? ctx A)
        ctx]
 
-      ; -→
+      ; rule: -→
       [((~→ A1 A2) (~→ B1 B2))
        (let ([ctx2 (subtype ctx #'B1 #'A1)])
          (subtype ctx2
                   (ctx-subst ctx2 #'A2)
                   (ctx-subst ctx2 #'B2)))]
 
-      ; ∀R
+      ; rule: ∀R
       [(A  (~∀ (X) B))
        (match (subtype (list* (list 'v #'X)
                               ctx)
@@ -402,7 +402,7 @@
                 ctx/before-X ...)
           ctx/before-X])]
 
-      ; ∀L
+      ; rule: ∀L
       [((~∀ (X) A)  B)
        (let ([x (generate-exv #'X)])
          (match (subtype (list* (list 'e x)
@@ -415,12 +415,12 @@
                   ctx/before-x ...)
             ctx/before-x]))]
 
-      ; InstantiateL
+      ; rule: InstantiateL
       [((~Exv _) B)
        #:when (ctx-contains-exv? ctx A)
        (inst/ctx ctx A #'B #:dir '<)]
 
-      ; InstantiateR
+      ; rule: InstantiateR
       [(A (~Exv _))
        #:when (ctx-contains-exv? ctx B)
        (inst/ctx ctx B #'A #:dir '>)]
@@ -556,11 +556,13 @@
               e-
               '#,(type->string #'T-))]])
 
+
 (define-typed-syntax ann
   [(_ ...) ⇐ _ ≫
    --------
    [≻ #,(raise-checking-fallback)]]
 
+  ; rule: Anno
   [(_ e (~datum :) t) ≫
    #:with T (eval-type #'t)
    #:with (() e-) (tycheck (set-ctx-of #'e (ctx-of this-syntax))
@@ -570,17 +572,19 @@
 
 
 (define-typed-syntax app
-  [(_) ⇐ _ ≫
+  [(_ ...) ⇐ _ ≫
    --------
    [≻ #,(raise-checking-fallback)]]
 
+  ; rule: 1I⇒
   [(_) ≫
    --------
    [⊢ '() ⇒ Unit]])
 
 
 (define-typed-syntax lam
-  [(_) ⇐ (~→ A B) ≫
+  ; rule: -→I
+  [(_ (x) e) ⇐ (~→ A B) ≫
    --------
    [#:error "unimpl: -→I"]]
 
