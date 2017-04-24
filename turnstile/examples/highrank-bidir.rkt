@@ -516,7 +516,7 @@
       [(~∀ (X) T1)
        #:with e* (set-ctx-of e (list* (list 'v #'X)
                                       (ctx-of e)))
-       #:with ((x- ...) e-) (tycheck #'e* T #:var-ctx var-ctx)
+       #:with ((x- ...) e-) (tycheck #'e* #'T1 #:var-ctx var-ctx)
        (match (ctx-of #'e- (ctx-of #'e*))
          [(list ctx/after-X ...
                 (list 'v (== #'X bound-identifier=?))
