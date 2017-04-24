@@ -406,9 +406,18 @@
        (check-true (exv=? e e1))
        (check-equal? (syntax->datum Un)
                      (syntax->datum t))]
-      [_ (fail "output context is wrong")]))
+      [_ (fail "output context is wrong")])
 
-
+    (check-exn (symbols 'inst-error)
+               (lambda ()
+                 (subtype (list (list 'e e1))
+                          (eval-type #`(∀ (X) (→ X X)))
+                          (eval-type #`(∀ (X) (→ X #,e1))))))
+    (check-not-exn
+     (lambda ()
+       (subtype (list)
+                (eval-type #`(∀ (X) (→ X X)))
+                (eval-type #`(→ Unit Unit))))))
 
 
   )
