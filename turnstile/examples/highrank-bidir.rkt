@@ -390,6 +390,16 @@
                   (ctx-subst ctx2 #'A2)
                   (ctx-subst ctx2 #'B2)))]
 
+      ; ∀R
+      [(A  (~∀ (X) B))
+       (match (subtype (list* (list 'v #'X)
+                              ctx)
+                       #'A #'B)
+         [(list ctx/after-X ...
+                (list 'v (== #'X bound-identifier=?))
+                ctx/before-X ...)
+          ctx/before-X])]
+
       ; ∀L
       [((~∀ (X) A)  B)
        (let ([x (generate-exv #'X)])
@@ -402,16 +412,6 @@
                   (list '▹ (== x eq?))
                   ctx/before-x ...)
             ctx/before-x]))]
-
-      ; ∀R
-      [(A  (~∀ (X) B))
-       (match (subtype (list* (list 'v #'X)
-                              ctx)
-                       #'A #'B)
-         [(list ctx/after-X ...
-                (list 'v (== #'X bound-identifier=?))
-                ctx/before-X ...)
-          ctx/before-X])]
 
       ; InstantiateL
       [((~Exv _) B)
@@ -444,17 +444,14 @@
                  (subtype (list (list 'e e1))
                           (eval-type #`(∀ (X) (→ X X)))
                           (eval-type #`(∀ (X) (→ X #,e1))))))
-    (check-not-exn
-     (lambda ()
-       (subtype (list)
-                (eval-type #`(∀ (X) (→ X X)))
-                (eval-type #`(→ Unit Unit)))))
-
-    (displayln "\nalpha-equiv test.")
-    (displayln (subtype '()
-                        (eval-type #'(∀ (X) X))
-                        (eval-type #'(∀ (Y) Y)))))
-
+    (check-equal? (subtype (list)
+                           (eval-type #`(∀ (X) (→ X X)))
+                           (eval-type #`(→ Unit Unit)))
+                  (list))
+    (check-equal? (subtype (list)
+                           (eval-type #'(∀ (X) X))
+                           (eval-type #'(∀ (Y) Y)))
+                  (list)))
 
   )
 
