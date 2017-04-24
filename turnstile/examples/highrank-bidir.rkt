@@ -7,7 +7,9 @@
 
 (provide (rename-out [mod-begin #%module-begin]
                      [top #%top-interaction])
-         unit)
+         (type-out Unit)
+         unit
+         ann)
 
 
 ; types
@@ -490,3 +492,12 @@
    #:when (Unit? #'T)
    --------
    [⊢ '()]])
+
+
+(define-typed-syntax ann
+  [(_ e (~datum :) t) ≫
+   #:with T (eval-type #'t)
+   #:with e* (set-ctx-of #'e (ctx-of this-syntax))
+   [⊢ e ≫ e- ⇐ T]
+   --------
+   [⊢ e- ⇒ T]])
