@@ -460,6 +460,11 @@
 
 ;; inference helpers
 (begin-for-syntax
+  (struct exn:checking-fallback exn ())
+  (define (raise-checking-fallback [msg "CHECKING FALLBACK"])
+    (raise (exn:checking-fallback msg
+                                  (current-continuation-marks))))
+
 
   (define (ctx-of s [default '()])
     (or (syntax-property s 'Γ)
@@ -468,7 +473,7 @@
   (define (set-ctx-of s ctx)
     (syntax-property s 'Γ ctx))
 
-  (define (subtype/handlers ctx A B #:src src)
+  (define (subtype+handlers ctx A B #:src src)
     (with-handlers
       ([exn:fail:inst?
         (lambda (ex)
@@ -479,39 +484,59 @@
        [exn:fail:subtype?
         (lambda (ex)
           (raise-syntax-error #f
-                              (format "subtype error: ~a"
-                                      (exn-message ex))
+                              (format "expected type ~a, got incompatible type ~a"
+                                      (type->string B)
+                                      (type->string A))
                               src))])
       (subtype ctx A B)))
 
-  ; apply these functions around checking
-  (define (unforall/pre e T [ctx (ctx-of e)])
+
+  ; infer the type of the expression
+  (define (tyinfer e #:var-ctx [var-ctx '()])
+    (syntax-parse (infer (list e)
+                         #:ctx var-ctx)
+      [(() (x- ...) (e-) (T))
+       (list #'(x- ...) #'e- #'T)]))
+
+  ; check the type of the expression
+  (define (tycheck e T #:var-ctx [var-ctx '()])
+    (with-handlers
+      ([exn:checking-fallback?
+        (lambda (ex)
+          (tyinfer/check e T #:var-ctx var-ctx))])
+      (syntax-parse (infer (list (add-expected-ty e T))
+                           #:ctx var-ctx)
+        [(() (x- ...) (e-) (_))
+         (list #'(x- ...) #'e-)])))
+
+  ; fallback to inference since checking didn't work
+  (define (tyinfer/check e T #:var-ctx [var-ctx '()])
     (syntax-parse T
+      ; rule: ∀I
       [(~∀ (X) T1)
-       (unforall/pre e
-                     #'T1
-                     (cons (list 'v #'X) ctx))]
-      [_ (list (set-ctx-of e ctx) T)]))
-
-  (define (unforall/post e- T default-ctx)
-    (syntax-parse T
-      [(~∀ (X) _)
-       (match (ctx-of e- default-ctx)
-         [(list ctx/after ...
+       #:with e* (set-ctx-of e (list* (list 'v #'X)
+                                      (ctx-of e)))
+       #:with ((x- ...) e-) (tycheck #'e* T #:var-ctx var-ctx)
+       (match (ctx-of #'e- (ctx-of #'e*))
+         [(list ctx/after-X ...
                 (list 'v (== #'X bound-identifier=?))
-                ctx/before ...)
-          (set-ctx-of e- ctx/before)])]
-      [_ e-]))
+                ctx/before-X ...)
+          (list #'(x- ...)
+                (set-ctx-of #'e- ctx/before-X))])]
 
-  (define (checking-fallback e B)
-    (syntax-parse (infer (list (syntax-property e 'expected-type #f)))
-      [(() () e+ (A))
-       (let* ([ctx (ctx-of #'e+ (ctx-of e))]
-              [ctx2 (subtype/handlers ctx
-                                      (ctx-subst ctx #'A)
-                                      (ctx-subst ctx B)
+      ; rule: Sub
+      [B
+       #:with ((x- ...) e- A) (tyinfer (syntax-property e 'expected-type #f)
+                                       #:var-ctx var-ctx)
+       (let* ([ctx1 (ctx-of #'e- (ctx-of e))]
+              [ctx2 (subtype+handlers ctx1
+                                      (ctx-subst ctx1 #'A)
+                                      (ctx-subst ctx1 #'B)
                                       #:src e)])
-         (set-ctx-of #'e+ ctx2))]))
+         (list #'(x- ...)
+               (set-ctx-of #'e- ctx2)))]
+
+      [_ (raise-syntax-error #f "failed to tyinfer/check??" e)]))
 
   )
 
@@ -524,52 +549,43 @@
 
 (define-typed-syntax top
   [(_ . e) ≫
-   [⊢ e ≫ e- ⇒ T]
+   #:with (() e- T) (tyinfer #'e)
    #:with T- (ctx-subst (ctx-of #'e-) #'T)
    --------
    [≻ (printf "~a : ~a\n"
               e-
               '#,(type->string #'T-))]])
 
-
 (define-typed-syntax ann
-  [(_ e (~datum :) t) ⇐ T ≫
+  [(_ ...) ⇐ _ ≫
    --------
-   [≻ #,(checking-fallback this-syntax #'T)]]
+   [≻ #,(raise-checking-fallback)]]
 
-   [(_ e (~datum :) t) ≫
+  [(_ e (~datum :) t) ≫
    #:with T (eval-type #'t)
-   #:with (e* T*) (unforall/pre #'e #'T (ctx-of this-syntax))
-   [⊢ e* ≫ e- ⇐ T*]
-   #:with e-* (unforall/post #'e- #'T (ctx-of #'e*))
+   #:with (() e-) (tycheck (set-ctx-of #'e (ctx-of this-syntax))
+                           #'T)
    --------
-   [⊢ e-* ⇒ T]])
+   [⊢ e- ⇒ T]])
 
-;  → ∀
 
 (define-typed-syntax app
-  ; (_) is unit syntax
-  [(_) ⇐ T ≫
-   #:do [(unless (Unit? #'T)
-           (raise-syntax-error #f (format "unexpected (), expecting type ~a"
-                                          (type->string #'T))
-                               this-syntax))]
+  [(_) ⇐ _ ≫
    --------
-   [⊢ '()]]
+   [≻ #,(raise-checking-fallback)]]
 
   [(_) ≫
    --------
-   [⊢ '() ⇒ Unit]]
+   [⊢ '() ⇒ Unit]])
 
-  ; (_ e1 e2) is application syntax
-  )
 
 (define-typed-syntax lam
-  [(_ (x) e) ⇐ (~→ A B) ≫
-   ; we don't add x:A to the context property since turnstile handles
-   ; contexts for variables
-   #:with (e* B*) (unforall/pre #'e #'B (ctx-of this-syntax))
-   [[x ≫ x- : A] ⊢ e* ≫ e- ⇐ B*]
-   #:with e-* (unforall/post #'e- #'B (ctx-of #'e*))
+  [(_) ⇐ (~→ A B) ≫
    --------
-   [⊢ (lambda (x-) e-*)]])
+   [#:error "unimpl: -→I"]]
+
+  [(_) ⇐ T ≫
+   #:when (not (Unit? #'T))
+   --------
+   [#:error (format "encountered lambda when expected type ~a"
+                    (type->string #'T))]])
