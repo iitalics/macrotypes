@@ -7,7 +7,8 @@
 
 (provide (rename-out [mod-begin #%module-begin]
                      [top #%top-interaction]
-                     [app #%app])
+                     [app #%app]
+                     [lam lambda])
          (type-out Unit → ∀)
          ann)
 
@@ -484,18 +485,18 @@
       (subtype ctx A B)))
 
   ; apply these functions around checking
-  (define (unforall/pre e T)
+  (define (unforall/pre e T [ctx (ctx-of e)])
     (syntax-parse T
       [(~∀ (X) T1)
-       (unforall/pre (set-ctx-of e (list* (list 'v #'X)
-                                          (ctx-of e)))
-                     #'T1)]
-      [_ (list e T)]))
+       (unforall/pre e
+                     #'T1
+                     (cons (list 'v #'X) ctx))]
+      [_ (list (set-ctx-of e ctx) T)]))
 
-  (define (unforall/post e* e- T)
+  (define (unforall/post e- T default-ctx)
     (syntax-parse T
       [(~∀ (X) _)
-       (match (ctx-of e- (ctx-of e*))
+       (match (ctx-of e- default-ctx)
          [(list ctx/after ...
                 (list 'v (== #'X bound-identifier=?))
                 ctx/before ...)
@@ -505,11 +506,12 @@
   (define (checking-fallback e B)
     (syntax-parse (infer (list (syntax-property e 'expected-type #f)))
       [(() () e+ (A))
-       (let* ([ctx (ctx-of #'e+ (ctx-of e))])
-         (subtype/handlers ctx
-                           (ctx-subst ctx #'A)
-                           (ctx-subst ctx B)
-                           #:src e))]))
+       (let* ([ctx (ctx-of #'e+ (ctx-of e))]
+              [ctx2 (subtype/handlers ctx
+                                      (ctx-subst ctx #'A)
+                                      (ctx-subst ctx B)
+                                      #:src e)])
+         (set-ctx-of #'e+ ctx2))]))
 
   )
 
@@ -531,17 +533,22 @@
 
 
 (define-typed-syntax ann
-  [(_ e (~datum :) t) ≫
+  [(_ e (~datum :) t) ⇐ T ≫
+   --------
+   [≻ #,(checking-fallback this-syntax #'T)]]
+
+   [(_ e (~datum :) t) ≫
    #:with T (eval-type #'t)
-   #:with (e* T*) (unforall/pre #'e #'T)
+   #:with (e* T*) (unforall/pre #'e #'T (ctx-of this-syntax))
    [⊢ e* ≫ e- ⇐ T*]
-   #:with e-* (unforall/post #'e* #'e- #'T)
+   #:with e-* (unforall/post #'e- #'T (ctx-of #'e*))
    --------
    [⊢ e-* ⇒ T]])
 
-; → ∀
+;  → ∀
 
 (define-typed-syntax app
+  ; (_) is unit syntax
   [(_) ⇐ T ≫
    #:do [(unless (Unit? #'T)
            (raise-syntax-error #f (format "unexpected (), expecting type ~a"
@@ -552,4 +559,17 @@
 
   [(_) ≫
    --------
-   [⊢ '() ⇒ Unit]])
+   [⊢ '() ⇒ Unit]]
+
+  ; (_ e1 e2) is application syntax
+  )
+
+(define-typed-syntax lam
+  [(_ (x) e) ⇐ (~→ A B) ≫
+   ; we don't add x:A to the context property since turnstile handles
+   ; contexts for variables
+   #:with (e* B*) (unforall/pre #'e #'B (ctx-of this-syntax))
+   [[x ≫ x- : A] ⊢ e* ≫ e- ⇐ B*]
+   #:with e-* (unforall/post #'e- #'B (ctx-of #'e*))
+   --------
+   [⊢ (lambda (x-) e-*)]])
