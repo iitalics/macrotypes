@@ -283,13 +283,16 @@
   (let ([e1 (generate-exv #'A)]
         [e2 (generate-exv #'B)]
         [e3 (generate-exv #'C)]
-        [Un (eval-type #'Unit)])
+        [Un (eval-type #'Unit)]
+        [Top (eval-type #'(∀ (X) X))])
+    ; simple assignment
     (check-equal? (inst/ctx (list (list 'e e1)
                                   (list 'dummy))
                             e1 Un
                             #:dir '<)
                   (list (list '= e1 Un)
                         (list 'dummy)))
+    ; assignment between two exvars
     (check-equal? (inst/ctx (list (list 'e e2)
                                   (list 'dummy 1)
                                   (list 'e e1)
@@ -310,12 +313,24 @@
                         (list 'dummy 1)
                         (list 'e e1)
                         (list 'dummy 2)))
+    ; infinite type
     (check-exn (symbols 'inst-error)
                (lambda ()
                  (inst/ctx (list (list 'e e2)
                                  (list 'e e1))
-                           ; infinite type
                            e1 (eval-type #`(→ #,e1 Unit))
+                           #:dir '<)))
+    ; foralls can't always be instantiated
+    ; e.g. [ (∀ (X) X) <: a ]  is a no-op
+    ; but  [ (∀ (X) X) :> a ]  is impossible
+    (check-equal? (inst/ctx (list (list 'e e1))
+                            e1 Top
+                            #:dir '>)
+                  (list (list 'e e1)))
+    (check-exn (symbols 'inst-error)
+               (lambda ()
+                 (inst/ctx (list (list 'e e1))
+                           e1 Top
                            #:dir '<))))
 
   )
