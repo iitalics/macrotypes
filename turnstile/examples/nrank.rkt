@@ -4,7 +4,7 @@
                      rackunit))
 
 ; fundamental types
-(define-base-types Unit)
+(define-base-types Unit Int Nat)
 (define-type-constructor → #:arity = 2)
 (define-binding-type All #:bvs = 1 #:arity = 1)
 
@@ -37,8 +37,29 @@
     (check-false (Evar=? T e1))
     (check-false (Evar=? e2 T))
     (check-false (Evar=? e1 e2))
-    (check-not-false (Evar=? e1 e1)))
+    (check-not-false (Evar=? e1 e1))
+    (check-not-false (Evar=? e1 ((current-type-eval) e1))))
 
+  ; substitute e -> U in T, if (bound-id=? x y)
+  (define (evar-subst e U T)
+    (syntax-parse T
+      [(~and e2 (~Evar _))
+       #:when (Evar=? e #'e2)
+       (transfer-stx-props U (merge-type-tags (syntax-track-origin U T #'evar-subst)))]
+      [(tsub ...)
+       #:with res (stx-map (λ (T2) (evar-subst e U T2)) #'(tsub ...))
+       (transfer-stx-props #'res T #:ctx T)]
+      [_ T]))
+
+  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
+         [Un ((current-type-eval) #'Unit)]
+         [T1 ((current-type-eval) #`(→ #,e1 Unit))]
+         [T2 ((current-type-eval) #`(→ Unit #,e2))]
+         [UU ((current-type-eval) #'(→ Unit Unit))])
+    (check-equal? (syntax->datum (evar-subst e1 Un T1))
+                  (syntax->datum UU))
+    (check-equal? (syntax->datum (evar-subst e1 Un T2))
+                  (syntax->datum T2)))
 
 
   ; a ContextElem (ctx-elem) is one of:
@@ -54,7 +75,7 @@
   (struct ctx-tv (id) #:transparent)
   (struct ctx-ev (ev) #:transparent)
   (struct ctx-ev= (ev ty) #:transparent)
-  (struct ctx-mark (sym))
+  (struct ctx-mark ())
 
   ; contract for ctx-tv's that contain the same bound identifier
   (define (ctx-tv/c id)
@@ -74,9 +95,10 @@
   ; current computed context
   (define current-ctx (make-parameter (box '())))
 
+  ; convenience function for constructing contexts
   (define (mk-ctx* . lst) (box lst))
 
-  ; removes elements from the context until the element specified
+  ; removes elements from the context until an element specified
   ; by the predicate is found. returns the matching element (which
   ; is removed as well), or #f if not found (in which case everything is
   ; removed).
@@ -100,5 +122,25 @@
     (check-equal? (ctx-pop-until! (ctx-tv/c #'w) ctx) #f)
     (check-equal? (unbox ctx) '()))
 
+
+  ; applies all ctx-ev= substitutions in the context to the given type.
+  (define (ctx-subst T [ctx (current-ctx)])
+    (let trav ([t T] [lst (unbox ctx)])
+      (match lst
+        ['() t]
+        [(cons (ctx-ev= e u) rst)
+         (trav (evar-subst e u t) rst)]
+        [(cons _ rst)
+         (trav t rst)])))
+
+  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
+         [Int ((current-type-eval) #'Int)]
+         [T1 ((current-type-eval) #`(→ #,e1 (→ #,e2 Nat)))]
+         [T2 ((current-type-eval) #`(→ Int (→ Int Nat)))])
+    (check-equal? (syntax->datum (ctx-subst T1 (mk-ctx* (ctx-mark)
+                                                        (e2 . ctx-ev= . e1)
+                                                        (ctx-ev e2)
+                                                        (e1 . ctx-ev= . Int))))
+                  (syntax->datum T2)))
 
   )
