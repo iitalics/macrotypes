@@ -31,6 +31,15 @@
                  (syntax-e #'s2))]
       [_ #f]))
 
+  (let* ([e1 (mk-evar)]
+         [e2 (mk-evar)]
+         [T ((current-type-eval) #'Unit)])
+    (check-false (Evar=? T e1))
+    (check-false (Evar=? e2 T))
+    (check-false (Evar=? e1 e2))
+    (check-not-false (Evar=? e1 e1)))
+
+
 
   ; a ContextElem (ctx-elem) is one of:
   ;  (ctx-tv id)       (identifier? id)
@@ -42,9 +51,9 @@
   ; with the difference that the "x:A" and "▹a" forms are condenced
   ; into just (ctx-mark), where eq? is used to find the specific mark
 
-  (struct ctx-tv (id))
-  (struct ctx-ev (ev))
-  (struct ctx-ev= (ev ty))
+  (struct ctx-tv (id) #:transparent)
+  (struct ctx-ev (ev) #:transparent)
+  (struct ctx-ev= (ev ty) #:transparent)
   (struct ctx-mark (sym))
 
   ; contract for ctx-tv's that contain the same bound identifier
@@ -65,11 +74,31 @@
   ; current computed context
   (define current-ctx (make-parameter (box '())))
 
+  (define (mk-ctx* . lst) (box lst))
 
   ; removes elements from the context until the element specified
-  ; by the predicate is found. returns the matching element, or #f
-  ; if not found.
-  (define (ctx-pop! predicate [ctx (current-ctx)])
-    #f)
+  ; by the predicate is found. returns the matching element (which
+  ; is removed as well), or #f if not found (in which case everything is
+  ; removed).
+  (define (ctx-pop-until! predicate [ctx (current-ctx)])
+    (let trav ([lst (unbox ctx)])
+      (match lst
+        ['() (set-box! ctx '()) #f]
+
+        [(cons (? predicate ce) rst)
+         (set-box! ctx rst)
+         ce]
+
+        [(cons _ rst) (trav rst)])))
+
+  (let* ([x #'x] [y #'y] [z #'z]
+         [ctx (mk-ctx* (ctx-tv x)
+                       (ctx-tv y)
+                       (ctx-tv z))])
+    (check-equal? (ctx-pop-until! (ctx-tv/c y) ctx) (ctx-tv y))
+    (check-equal? (unbox ctx) (list (ctx-tv z)))
+    (check-equal? (ctx-pop-until! (ctx-tv/c #'w) ctx) #f)
+    (check-equal? (unbox ctx) '()))
+
 
   )
