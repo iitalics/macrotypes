@@ -40,7 +40,7 @@
     (check-not-false (Evar=? e1 e1))
     (check-not-false (Evar=? e1 ((current-type-eval) e1))))
 
-  ; substitute e -> U in T, if (bound-id=? x y)
+  ; substitute evar e -> U in T
   (define (evar-subst e U T)
     (syntax-parse T
       [(~and e2 (~Evar _))
@@ -89,41 +89,50 @@
       [(ctx-ev ev2) (Evar=? ev ev2)]
       [_ #f]))
 
+  ; contract for picking specific ctx-mark's
+  (define (ctx-mark/c cm)
+    (lambda (c) (eq? c cm)))
+
 
   ; a Context (ctx) is a (box l/ce) where l/ce is a list of ContextElem's
 
   ; current computed context
   (define current-ctx (make-parameter (box '())))
 
+  ; context utility functions
   (define (mk-ctx* . lst) (box lst))
-  (define (ctx-find p [ctx (current-ctx)]) (findf p (unbox ctx)))
+  (define (ctx-find p [ctx (current-ctx)])
+    (findf p (unbox ctx)))
   (define (ctx-cons ce [ctx (current-ctx)])
     (box (cons ce (unbox ctx))))
   (define (ctx-cons! ce [ctx (current-ctx)])
     (set-box! ctx (cons ce (unbox ctx))))
+  (define (ctx-prepend! ces [ctx (current-ctx)])
+    (set-box! ctx (append ces (unbox ctx))))
 
-  ; removes elements from the context until an element specified
-  ; by the predicate is found. returns the matching element (which
-  ; is removed as well), or #f if not found (in which case everything is
-  ; removed).
-  (define (ctx-pop-until! predicate [ctx (current-ctx)])
-    (let trav ([lst (unbox ctx)])
+
+  ; removes elements from the given context until it finds one that
+  ; matches the given predicate (which it removes as well). returns
+  ; the list of elements popped, excluding the element that matched
+  ; the predicate.
+  (define (ctx-pop-until! p [ctx (current-ctx)])
+    (let trav ([lst (unbox ctx)] [acc '()])
       (match lst
-        ['() (set-box! ctx '()) #f]
+        ['()
+         (set-box! ctx '()) acc]
+        [(cons (? p) rst)
+         (set-box! ctx rst) (reverse acc)]
+        [(cons elem rst)
+         (trav rst (cons elem acc))])))
 
-        [(cons (? predicate ce) rst)
-         (set-box! ctx rst)
-         ce]
-
-        [(cons _ rst) (trav rst)])))
-
-  (let* ([x #'x] [y #'y] [z #'z]
-         [ctx (mk-ctx* (ctx-tv x)
-                       (ctx-tv y)
-                       (ctx-tv z))])
-    (check-equal? (ctx-pop-until! (ctx-tv/c y) ctx) (ctx-tv y))
-    (check-equal? (unbox ctx) (list (ctx-tv z)))
-    (check-equal? (ctx-pop-until! (ctx-tv/c #'w) ctx) #f)
+  (let* ([mrk1 (ctx-mark)] [mrk2 (ctx-mark)] [e1 (mk-evar)] [e2 (mk-evar)]
+         [ctx (mk-ctx* mrk1
+                       (ctx-ev e1)
+                       mrk2
+                       (ctx-ev e2))])
+    (check-equal? (ctx-pop-until! (ctx-mark/c mrk2) ctx)  (list mrk1 (ctx-ev e1)))
+    (check-equal? (unbox ctx) (list (ctx-ev e2)))
+    (check-equal? (ctx-pop-until! (lambda _ #f) ctx)           (list (ctx-ev e2)))
     (check-equal? (unbox ctx) '()))
 
 
