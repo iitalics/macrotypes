@@ -95,8 +95,12 @@
   ; current computed context
   (define current-ctx (make-parameter (box '())))
 
-  ; convenience function for constructing contexts
   (define (mk-ctx* . lst) (box lst))
+  (define (ctx-find p [ctx (current-ctx)]) (findf p (unbox ctx)))
+  (define (ctx-cons ce [ctx (current-ctx)])
+    (box (cons ce (unbox ctx))))
+  (define (ctx-cons! ce [ctx (current-ctx)])
+    (set-box! ctx (cons ce (unbox ctx))))
 
   ; removes elements from the context until an element specified
   ; by the predicate is found. returns the matching element (which
@@ -137,10 +141,45 @@
          [Int ((current-type-eval) #'Int)]
          [T1 ((current-type-eval) #`(→ #,e1 (→ #,e2 Nat)))]
          [T2 ((current-type-eval) #`(→ Int (→ Int Nat)))])
-    (check-equal? (syntax->datum (ctx-subst T1 (mk-ctx* (ctx-mark)
-                                                        (e2 . ctx-ev= . e1)
-                                                        (ctx-ev e2)
-                                                        (e1 . ctx-ev= . Int))))
+    (check-equal? (syntax->datum (ctx-subst T1
+                                            (mk-ctx* (ctx-mark)
+                                                     (e2 . ctx-ev= . e1)
+                                                     (ctx-ev e2)
+                                                     (e1 . ctx-ev= . Int))))
                   (syntax->datum T2)))
+
+
+  ; is the given type well formed under the context?
+  (define (well-formed? t [ctx (current-ctx)])
+    (syntax-parse t
+      [a:id
+       (ctx-find (ctx-tv/c #'a) ctx)]
+      [(~and e (~Evar _))
+       (ctx-find (match-lambda
+                   [(ctx-ev e2) (Evar=? #'e e2)]
+                   [(ctx-ev= e2 _) (Evar=? #'e e2)]
+                   [_ #f])
+                 ctx)]
+      [(~→ A B)
+       (and (well-formed? #'A ctx)
+            (well-formed? #'B ctx))]
+      [(~All (X) T)
+       (well-formed? #'T (ctx-cons (ctx-tv #'X) ctx))]
+      [(~or ~Unit ~Int ~Nat) #t]
+      [_ #f]))
+
+  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
+         [Nat ((current-type-eval) #'Nat)]
+         [T1 ((current-type-eval) #`(→ #,e1 Unit))]
+         [T2 ((current-type-eval) #`(→ Nat #,e2))])
+    (check-not-false (well-formed? T1 (mk-ctx* (ctx-ev e1))))
+    (check-false     (well-formed? T2 (mk-ctx* (ctx-ev e1))))
+    (check-not-false (well-formed? T2 (mk-ctx* (ctx-ev= e2 Nat))))
+    (syntax-parse ((current-type-eval) #'(All (X) (→ X Unit)))
+      [(~All (Y) T)
+       (check-false     (well-formed? #'T (mk-ctx*)))
+       (check-not-false (well-formed? #'T (mk-ctx* (ctx-tv #'Y))))]))
+
+
 
   )
