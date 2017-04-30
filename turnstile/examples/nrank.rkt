@@ -107,7 +107,7 @@
     (box (cons ce (unbox ctx))))
   (define (ctx-cons! ce [ctx (current-ctx)])
     (set-box! ctx (cons ce (unbox ctx))))
-  (define (ctx-prepend! ces [ctx (current-ctx)])
+  (define (ctx-append! ces [ctx (current-ctx)])
     (set-box! ctx (append ces (unbox ctx))))
 
 
@@ -160,20 +160,25 @@
 
   ; is the given type well formed under the context?
   (define (well-formed? t [ctx (current-ctx)])
+    (well-formed?/list t (unbox ctx)))
+
+  ; is the given type well formed under the context? (not a real context,
+  ; but rather a list of context elements)
+  (define (well-formed?/list t ctxl)
     (syntax-parse t
       [a:id
-       (ctx-find (ctx-tv/c #'a) ctx)]
+       (memf (ctx-tv/c #'a) ctxl)]
       [(~and e (~Evar _))
-       (ctx-find (match-lambda
-                   [(ctx-ev e2) (Evar=? #'e e2)]
-                   [(ctx-ev= e2 _) (Evar=? #'e e2)]
-                   [_ #f])
-                 ctx)]
+       (memf (match-lambda
+               [(ctx-ev e2) (Evar=? #'e e2)]
+               [(ctx-ev= e2 _) (Evar=? #'e e2)]
+               [_ #f])
+             ctxl)]
       [(~→ A B)
-       (and (well-formed? #'A ctx)
-            (well-formed? #'B ctx))]
+       (and (well-formed?/list #'A ctxl)
+            (well-formed?/list #'B ctxl))]
       [(~All (X) T)
-       (well-formed? #'T (ctx-cons (ctx-tv #'X) ctx))]
+       (well-formed?/list #'T (cons (ctx-tv #'X) ctxl))]
       [(~or ~Unit ~Int ~Nat) #t]
       [_ #f]))
 
@@ -189,6 +194,47 @@
        (check-false     (well-formed? #'T (mk-ctx*)))
        (check-not-false (well-formed? #'T (mk-ctx* (ctx-tv #'Y))))]))
 
+
+  ; instantiation algorithm. instantiate evar 'e' to be type 't' under
+  ; the given context, in the given direction. returns #t if succeeds,
+  ; #f if fails to instantiate.
+  ; e <: t   if dir is '<:
+  ; t <: e   if dir is ':>
+  (define (instantiate dir e t [ctx (current-ctx)])
+    (define-values (before after)
+      (let-values ([(a b) (splitf-at (unbox ctx) (negate (ctx-ev/c e)))])
+        (values (cdr b) a)))
+
+    (syntax-parse t
+      [τ ; Inst[L/R]Solve
+       #:when (well-formed?/list #'τ before)
+       (begin
+         (ctx-pop-until! (ctx-ev/c e) ctx)
+         (ctx-cons! (e . ctx-ev= . #'τ) ctx)
+         (ctx-prepend! after ctx)
+         #t)]
+
+      [(~and b (~Evar _)) ; Inst[L/R]Reach
+       (and (memf (ctx-ev/c #'b) after)
+            (begin
+              (define post-b (ctx-pop-until! (ctx-ev/c #'b) ctx))
+              (ctx-cons! (#'b . ctx-ev= . e))
+              (ctx-prepend! post-b)
+              #t))]
+
+      [(~→ A1 A2) ; Inst[L/R]Arr
+       (begin
+         (define e1 (mk-evar))
+         (define e2 (mk-evar))
+         (define e1->e2 ((current-type-eval) #`(→ #,e1 #,e2)))
+         (define ctx2 (box (list* e2 e1
+                                  (e . ctx-ev= . e1->e2)
+                                  before)))
+         (ctx-append! after ctx2)
+         ; TODO: beg for monads
+         )]
+
+      [_ #f]))
 
 
   )
