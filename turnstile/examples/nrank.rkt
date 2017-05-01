@@ -255,10 +255,9 @@
               [e1->e2 ((current-type-eval) #`(→ #,e1 #,e2))])
          (call-between (ctx-ev/c e)
                        (lambda ()
-                         (ctx-append! (list (e . ctx-ev= . e1->e2)
-                                            (ctx-ev e1)
-                                            (ctx-ev e2))
-                                      ctx)))
+                         (ctx-cons! (ctx-ev e2) ctx)
+                         (ctx-cons! (ctx-ev e1) ctx)
+                         (ctx-cons! (e . ctx-ev= . e1->e2) ctx)))
          (or (and (inst-evar e1 dir-inv #'A1)
                   (inst-evar e2 dir     (subst-from-ctx #'A2 ctx)))
              (begin (set-box! ctx tmp) #f)))]
@@ -269,18 +268,30 @@
        (begin0 (inst-evar e dir #'A)
          (set-box! ctx (get-before (ctx-tv/c #'X))))]
 
+      [(~All (X) B) ; InstRAllL
+       #:when (eq? dir ':>)
+       (let* ([ex (mk-evar #'X)]
+              [mrk (ctx-mark)])
+         (ctx-cons! mrk ctx)
+         (ctx-cons! (ctx-ev ex) ctx)
+         (begin0 (inst-evar e dir (subst ex #'X #'B))
+           (set-box! ctx (get-before (ctx-mark/c mrk)))))]
+
       [_ #f]))
 
   (let* ([e1 (mk-evar)] [e2 (mk-evar)]
+         [init-ctx (lambda _ (mk-ctx* (ctx-ev e2) (ctx-ev e1)))]
          [s->d syntax->datum]
          [T1 ((current-type-eval) #`(→ #,e1 Unit))]
          [T2 ((current-type-eval) #`(→ #,e2 Unit))]
-         [init-ctx (lambda _ (mk-ctx* (ctx-ev e2) (ctx-ev e1)))])
+         [T3 ((current-type-eval) #`(All (X) X))])
+    ; easy to inst because e1 appears before e2
     (parameterize ([current-ctx (init-ctx)])
       (check-not-false (inst-evar e2 '<: T1))
       (check-equal? (unbox (current-ctx))
                     (list (e2 . ctx-ev= . T1)
                           (ctx-ev e1))))
+    ; more difficult to inst before e2 appears after e1
     (parameterize ([current-ctx (init-ctx)])
       (check-not-false (inst-evar e1 '<: T2))
       (match (unbox (current-ctx))
@@ -290,7 +301,14 @@
          (check-equal? (s->d t3) (s->d e1))
          (check-equal? (s->d t4) (s->d ((current-type-eval) #`(→ #,e3 #,e4))))
          (check-equal? (s->d t5) (s->d ((current-type-eval) #'Unit)))]
-        [_ (fail "context has wrong form")])))
-
+        [_ (fail "context has wrong form")]))
+    ; inst with foralls
+    (parameterize ([current-ctx (init-ctx)])
+      (check-false (inst-evar e1 '<: T3))
+      (check-equal? (unbox (current-ctx))
+                    (list (ctx-ev e2) (ctx-ev e1)))
+      (check-not-false (inst-evar e1 ':> T3))
+      (check-equal? (unbox (current-ctx))
+                    (list (ctx-ev e2) (ctx-ev e1)))))
 
   )
