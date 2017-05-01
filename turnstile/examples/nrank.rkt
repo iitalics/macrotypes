@@ -75,7 +75,7 @@
                   (syntax->datum T2)))
 
 
-  ; a ContextElem (ctx-elem) is one of:
+  ; a ContextElem (ce) is one of:
   ;  (ctx-tv id)       (identifier? id)
   ;  (ctx-ev ev)       (Evar? ev)
   ;  (ctx-ev= ev ty)   (and (Evar? ev) (type? ty))
@@ -180,13 +180,13 @@
   (define (well-formed?/list t ctxl)
     (syntax-parse t
       [a:id
-       (memf (ctx-tv/c #'a) ctxl)]
+       (ormap (ctx-tv/c #'a) ctxl)]
       [(~and e (~Evar _))
-       (memf (match-lambda
-               [(ctx-ev e2) (Evar=? #'e e2)]
-               [(ctx-ev= e2 _) (Evar=? #'e e2)]
-               [_ #f])
-             ctxl)]
+       (ormap (match-lambda
+                [(ctx-ev e2) (Evar=? #'e e2)]
+                [(ctx-ev= e2 _) (Evar=? #'e e2)]
+                [_ #f])
+              ctxl)]
       [(~→ A B)
        (and (well-formed?/list #'A ctxl)
             (well-formed?/list #'B ctxl))]
