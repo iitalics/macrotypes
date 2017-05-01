@@ -137,7 +137,7 @@
 
 
   ; applies all ctx-ev= substitutions in the context to the given type.
-  (define (ctx-subst T [ctx (current-ctx)])
+  (define (subst-from-ctx T [ctx (current-ctx)])
     (let trav ([t T] [lst (unbox ctx)])
       (match lst
         ['() t]
@@ -150,11 +150,11 @@
          [Int ((current-type-eval) #'Int)]
          [T1 ((current-type-eval) #`(→ #,e1 (→ #,e2 Nat)))]
          [T2 ((current-type-eval) #`(→ Int (→ Int Nat)))])
-    (check-equal? (syntax->datum (ctx-subst T1
-                                            (mk-ctx* (ctx-mark)
-                                                     (e2 . ctx-ev= . e1)
-                                                     (ctx-ev e2)
-                                                     (e1 . ctx-ev= . Int))))
+    (check-equal? (syntax->datum (subst-from-ctx T1
+                                                 (mk-ctx* (ctx-mark)
+                                                          (e2 . ctx-ev= . e1)
+                                                          (ctx-ev e2)
+                                                          (e1 . ctx-ev= . Int))))
                   (syntax->datum T2)))
 
 
@@ -200,39 +200,53 @@
   ; #f if fails to instantiate.
   ; e <: t   if dir is '<:
   ; t <: e   if dir is ':>
-  (define (instantiate dir e t [ctx (current-ctx)])
-    (define-values (before after)
-      (let-values ([(a b) (splitf-at (unbox ctx) (negate (ctx-ev/c e)))])
-        (values (cdr b) a)))
+  (define (inst-evar dir e t [ctx (current-ctx)])
+
+    ; calls fn such that any affects to ctx will be applied
+    ; BETWEEN the first found element that matches predicate 'p'
+    (define (call-between p fn #:exclude? [excl? #t])
+      (let-values ([(a b) (splitf-at (unbox ctx)
+                                     (negate p))])
+        (set-box! ctx
+                  (if excl? (cdr b) b))
+        (begin0 (fn (cdr b) a)
+          (ctx-append! a ctx))))
+
+    (define (get-before p) (cdr (dropf ctx (negate p))))
+    (define (get-after p) (takef ctx (negate p)))
+
+    (define dir-inv
+      (case dir [(<:) ':>] [(:>) '<:]))
 
     (syntax-parse t
       [τ ; Inst[L/R]Solve
-       #:when (well-formed?/list #'τ before)
-       (begin
-         (ctx-pop-until! (ctx-ev/c e) ctx)
-         (ctx-cons! (e . ctx-ev= . #'τ) ctx)
-         (ctx-prepend! after ctx)
-         #t)]
+       #:when (well-formed? #'τ (get-before (ctx-ev/c e)))
+       (call-between (ctx-ev/c e)
+                     (lambda (before after)
+                       (ctx-cons! (e . ctx-ev= . #'τ))
+                       #t))]
 
-      [(~and b (~Evar _)) ; Inst[L/R]Reach
-       (and (memf (ctx-ev/c #'b) after)
-            (begin
-              (define post-b (ctx-pop-until! (ctx-ev/c #'b) ctx))
-              (ctx-cons! (#'b . ctx-ev= . e))
-              (ctx-prepend! post-b)
-              #t))]
+      [(~and e2 (~Evar _)) ; Inst[L/R]Reach
+       (and (memf (ctx-ev/c #'e2)
+                  (get-after (ctx-ev/c e)))
+            (call-between (ctx-ev/c #'e2)
+                          (lambda (before after)
+                            (ctx-cons! (#'e2 . ctx-ev= . e)))))]
 
       [(~→ A1 A2) ; Inst[L/R]Arr
-       (begin
-         (define e1 (mk-evar))
-         (define e2 (mk-evar))
-         (define e1->e2 ((current-type-eval) #`(→ #,e1 #,e2)))
-         (define ctx2 (box (list* e2 e1
-                                  (e . ctx-ev= . e1->e2)
-                                  before)))
-         (ctx-append! after ctx2)
-         ; TODO: beg for monads
-         )]
+       (let* ([tmp (unbox ctx)]
+              [e1 (mk-evar)]
+              [e2 (mk-evar)]
+              [e1->e2 ((current-type-eval) #`(→ #,e1 #,e2))])
+         (call-between (ctx-ev/c e)
+                       (lambda ()
+                         (ctx-append! (list (e . ctx-ev= . e1->e2)
+                                            (ctx-ev e1)
+                                            (ctx-ev e2))
+                                      ctx)))
+         (or (and (inst-evar dir-inv e1 #'A1)
+                  (inst-evar dir     e2 (subst-from-ctx #'A2 ctx)))
+             (begin (set-box! ctx tmp) #f)))]
 
       [_ #f]))
 
