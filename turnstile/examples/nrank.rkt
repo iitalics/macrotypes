@@ -8,12 +8,25 @@
 (define-type-constructor → #:arity = 2)
 (define-binding-type All #:bvs = 1 #:arity = 1)
 
+(begin-for-syntax
+  ; a monotype is a type without quantifications (foralls)
+  (define (monotype? t)
+    (syntax-parse t
+      [(~All (X) _) #f]
+      [(~→ T1 T2) (and (monotype? #'T1)
+                       (monotype? #'T2))]
+      [_ #t]))
+
+  (check-true (monotype? ((current-type-eval) #'Unit)))
+  (check-true (monotype? ((current-type-eval) #'(→ Int Nat))))
+  (check-false (monotype? ((current-type-eval) #'(→ (All (X) X) Nat))))
+  )
+
 ; the one "argument" to an Evar is a mk-type'd quoted symbol
 ; used to differentiate them
 (define-type-constructor Evar #:arity = 1)
 
 (begin-for-syntax
-
   ; generates a new evar
   (define (mk-evar [src #f])
     (define uniq-sym (gensym (syntax-parse src
@@ -200,38 +213,40 @@
   ; #f if fails to instantiate.
   ; e <: t   if dir is '<:
   ; t <: e   if dir is ':>
-  (define (inst-evar dir e t [ctx (current-ctx)])
+  (define (inst-evar e dir t [ctx (current-ctx)])
 
     ; calls fn such that any affects to ctx will be applied
-    ; BETWEEN the first found element that matches predicate 'p'
-    (define (call-between p fn #:exclude? [excl? #t])
+    ; in the space instead of the first found element that
+    ; matches predicate 'p'.
+    (define (call-between p fn)
       (let-values ([(a b) (splitf-at (unbox ctx)
                                      (negate p))])
-        (set-box! ctx
-                  (if excl? (cdr b) b))
-        (begin0 (fn (cdr b) a)
+        (set-box! ctx (cdr b))
+        (begin0 (fn)
           (ctx-append! a ctx))))
 
-    (define (get-before p) (cdr (dropf ctx (negate p))))
-    (define (get-after p) (takef ctx (negate p)))
+    (define (get-before p) (cdr (dropf (unbox ctx) (negate p))))
+    (define (get-after p) (takef (unbox ctx) (negate p)))
 
     (define dir-inv
       (case dir [(<:) ':>] [(:>) '<:]))
 
     (syntax-parse t
       [τ ; Inst[L/R]Solve
-       #:when (well-formed? #'τ (get-before (ctx-ev/c e)))
+       #:when (and (monotype? #'τ)
+                   (well-formed?/list #'τ (get-before (ctx-ev/c e))))
        (call-between (ctx-ev/c e)
-                     (lambda (before after)
-                       (ctx-cons! (e . ctx-ev= . #'τ))
+                     (lambda ()
+                       (ctx-cons! (e . ctx-ev= . #'τ) ctx)
                        #t))]
 
       [(~and e2 (~Evar _)) ; Inst[L/R]Reach
        (and (memf (ctx-ev/c #'e2)
                   (get-after (ctx-ev/c e)))
             (call-between (ctx-ev/c #'e2)
-                          (lambda (before after)
-                            (ctx-cons! (#'e2 . ctx-ev= . e)))))]
+                          (lambda ()
+                            (ctx-cons! (#'e2 . ctx-ev= . e) ctx)
+                            #t)))]
 
       [(~→ A1 A2) ; Inst[L/R]Arr
        (let* ([tmp (unbox ctx)]
@@ -244,11 +259,38 @@
                                             (ctx-ev e1)
                                             (ctx-ev e2))
                                       ctx)))
-         (or (and (inst-evar dir-inv e1 #'A1)
-                  (inst-evar dir     e2 (subst-from-ctx #'A2 ctx)))
+         (or (and (inst-evar e1 dir-inv #'A1)
+                  (inst-evar e2 dir     (subst-from-ctx #'A2 ctx)))
              (begin (set-box! ctx tmp) #f)))]
 
+      [(~All (X) A) ; InstLAllR
+       #:when (eq? dir '<:)
+       (ctx-cons! (ctx-tv #'X) ctx)
+       (begin0 (inst-evar e dir #'A)
+         (set-box! ctx (get-before (ctx-tv/c #'X))))]
+
       [_ #f]))
+
+  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
+         [s->d syntax->datum]
+         [T1 ((current-type-eval) #`(→ #,e1 Unit))]
+         [T2 ((current-type-eval) #`(→ #,e2 Unit))]
+         [init-ctx (lambda _ (mk-ctx* (ctx-ev e2) (ctx-ev e1)))])
+    (parameterize ([current-ctx (init-ctx)])
+      (check-not-false (inst-evar e2 '<: T1))
+      (check-equal? (unbox (current-ctx))
+                    (list (e2 . ctx-ev= . T1)
+                          (ctx-ev e1))))
+    (parameterize ([current-ctx (init-ctx)])
+      (check-not-false (inst-evar e1 '<: T2))
+      (match (unbox (current-ctx))
+        [(list (ctx-ev= t1 t2) (ctx-ev= t3 t4) (ctx-ev e3) (ctx-ev= e4 t5))
+         (check-equal? (s->d t1) (s->d e2))
+         (check-equal? (s->d t2) (s->d e3))
+         (check-equal? (s->d t3) (s->d e1))
+         (check-equal? (s->d t4) (s->d ((current-type-eval) #`(→ #,e3 #,e4))))
+         (check-equal? (s->d t5) (s->d ((current-type-eval) #'Unit)))]
+        [_ (fail "context has wrong form")])))
 
 
   )
