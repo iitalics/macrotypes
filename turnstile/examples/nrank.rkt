@@ -441,6 +441,9 @@
       (check-not-false (subtype Nat ((current-type-eval) #'(All (X) Int))))
       (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
       (check-equal? (unbox (current-ctx)) '())
+      ; ???
+      (check-not-false (subtype ((current-type-eval) #'(All (X) (All (Y) (→ X (→ Y X)))))
+                                ((current-type-eval) #'(All (X) (All (Y) (→ X (→ Y X)))))))
       ))
 
   [current-typecheck-relation
@@ -548,3 +551,6 @@
           #'(x- body-)]))
    --------
    [⊢ (lambda- (x-) body-) ⇒ (→ e1 e2)]])
+
+
+#;(ann (λ (x) (λ (y) x)) : (All (X) (All (Y) (→ X (→ Y X)))))
