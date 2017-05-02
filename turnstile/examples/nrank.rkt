@@ -233,15 +233,16 @@
       (case dir [(<:) ':>] [(:>) '<:]))
 
     (syntax-parse t
-      [τ ; Inst[L/R]Solve
-       #:when (and (monotype? #'τ)
-                   (well-formed?/list #'τ (get-before (ctx-ev/c e))))
-       (call-between ctx (ctx-ev/c e)
-                     (lambda ()
-                       (ctx-cons! (e . ctx-ev= . #'τ) ctx)
-                       #t))]
+      ; rule: Inst[L/R]Solve
+      [τ #:when (and (monotype? #'τ)
+                     (well-formed?/list #'τ (get-before (ctx-ev/c e))))
+         (call-between ctx (ctx-ev/c e)
+                       (lambda ()
+                         (ctx-cons! (e . ctx-ev= . #'τ) ctx)
+                         #t))]
 
-      [(~and e2 (~Evar _)) ; Inst[L/R]Reach
+      ; rule: Inst[L/R]Reach
+      [(~and e2 (~Evar _))
        (and (memf (ctx-ev/c #'e2)
                   (get-after (ctx-ev/c e)))
             (call-between ctx (ctx-ev/c #'e2)
@@ -249,7 +250,8 @@
                             (ctx-cons! (#'e2 . ctx-ev= . e) ctx)
                             #t)))]
 
-      [(~→ A1 A2) ; Inst[L/R]Arr
+      ; rule: Inst[L/R]Arr
+      [(~→ A1 A2)
        (let* ([tmp (unbox ctx)]
               [e1 (mk-evar)]
               [e2 (mk-evar)]
@@ -263,13 +265,15 @@
                   (inst-evar e2 dir     (subst-from-ctx #'A2 ctx)))
              (begin (set-box! ctx tmp) #f)))]
 
-      [(~All (X) A) ; InstLAllR
+      ; rule: InstLAllR
+      [(~All (X) A)
        #:when (eq? dir '<:)
        (ctx-cons! (ctx-tv #'X) ctx)
        (begin0 (inst-evar e dir #'A)
          (set-box! ctx (get-before (ctx-tv/c #'X))))]
 
-      [(~All (X) B) ; InstRAllL
+      ; rule: InstRAllL
+      [(~All (X) B)
        #:when (eq? dir ':>)
        (let* ([ex (mk-evar #'X)]
               [mrk (ctx-mark)])
@@ -318,17 +322,19 @@
   ; otherwise
   (define (subtype t1 t2 [ctx (current-ctx)])
     (syntax-parse (list t1 t2)
-      ; TODO: make this extensible
+      ; rule: <:Unit (plus some new types)
       [(~or (~Unit ~Unit)
             (~Int  ~Int)
             (~Nat  ~Nat)
             (~Nat  ~Int))
        #t]
 
+      ; rule: <:Exvar
       [(~and (e1 e2) ((~Evar _) (~Evar _)))
        #:when (Evar=? #'e1 #'e2)
        #t]
 
+      ; rule: <:-→
       [((~→ A1 A2) (~→ B1 B2))
        (and (subtype #'B1 #'A1 ctx)
             (subtype (subst-from-ctx #'A2 ctx)
