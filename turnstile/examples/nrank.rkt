@@ -19,6 +19,7 @@
   (check-true (monotype? ((current-type-eval) #'Unit)))
   (check-true (monotype? ((current-type-eval) #'(→ Int Nat))))
   (check-false (monotype? ((current-type-eval) #'(→ (All (X) X) Nat))))
+
   )
 
 ; the one "argument" to an Evar is a mk-type'd quoted symbol
@@ -26,6 +27,20 @@
 (define-type-constructor Evar #:arity = 1)
 
 (begin-for-syntax
+  (define (type->string t)
+    (syntax-parse t
+      [~Unit "1"]
+      [~Nat "Nat"]
+      [~Int "Int"]
+      [~Num "Num"]
+      [(~→ T1 T2) (format "(→ ~a ~a)"
+                          (type->string #'T1)
+                          (type->string #'T2))]
+      [(~All (X) T) (format "(∀ (~a) ~a)"
+                            (type->string #'X #'T))]
+      [(~Evar ((~literal quote) s)) (format "{~a}"
+                                            (syntax-e #'s))]))
+
   ; generates a new evar
   (define (mk-evar [src #f])
     (define uniq-sym (gensym (syntax-parse src
@@ -35,8 +50,8 @@
       ((current-type-eval) #'(Evar quot-sym))))
 
   ; returns #t if both types are the same evars
-  (define (Evar=? T1 T2)
-    (syntax-parse (list T1 T2)
+  (define (Evar=? t1 t2)
+    (syntax-parse (list t1 t2)
       [((~Evar ((~literal quote) s1))
         (~Evar ((~literal quote) s2)))
        (symbol=? (syntax-e #'s1)
@@ -58,20 +73,26 @@
       [(~and e2 (~Evar _))
        #:when (Evar=? e #'e2)
        (transfer-stx-props U (merge-type-tags (syntax-track-origin U T #'evar-subst)))]
-      [(tsub ...)
-       #:with res (stx-map (λ (T2) (evar-subst e U T2)) #'(tsub ...))
-       (transfer-stx-props #'res T #:ctx T)]
+      [(~→ T1 T2)
+       #:with T1- (evar-subst e U #'T1)
+       #:with T2- (evar-subst e U #'T2)
+       ((current-type-eval) #'(→ T1- T2-))]
+      [(~All (X) T1)
+       #:with T1- (evar-subst e U #'T1)
+       ((current-type-eval) #'(All (X) T1-))]
       [_ T]))
 
   (let* ([e1 (mk-evar)] [e2 (mk-evar)]
          [Un ((current-type-eval) #'Unit)]
          [T1 ((current-type-eval) #`(→ #,e1 Unit))]
          [T2 ((current-type-eval) #`(→ Unit #,e2))]
-         [UU ((current-type-eval) #'(→ Unit Unit))])
+         [U->U ((current-type-eval) #'(→ Unit Unit))])
     (check-equal? (syntax->datum (evar-subst e1 Un T1))
-                  (syntax->datum UU))
+                  (syntax->datum U->U))
     (check-equal? (syntax->datum (evar-subst e1 Un T2))
-                  (syntax->datum T2)))
+                  (syntax->datum T2))
+    (check-equal? (syntax->datum (evar-subst ((current-type-eval) e2) Un T2))
+                  (syntax->datum U->U)))
 
 
   ; a ContextElem (ce) is one of:
@@ -107,6 +128,18 @@
 
 
   ; a Context (ctx) is a (box l/ce) where l/ce is a list of ContextElem's
+
+  (define (display-ctx ctx [mrk #f])
+    (for ([ce (in-list (unbox ctx))])
+      (match ce
+        [(ctx-ev e)    (printf "ev: ~a\n" (type->string e))]
+        [(ctx-ev= e t) (printf "ev: ~a = ~a\n" (type->string e) (type->string t))]
+        [(ctx-tv v)    (printf "tv: ~a\n" (syntax-e v))]
+        [(ctx-mark)    (if (eq? ce mrk)
+                           (printf "mark*\n")
+                           (printf "mark\n"))]))
+    (printf ";\n"))
+
 
   ; current computed context
   (define current-ctx (make-parameter (box '())))
@@ -219,8 +252,12 @@
 
   ; get parts of a context before/after the first (latest) element that
   ; maches the given predicate
-  (define (get-before ctx p) (cdr (dropf (unbox ctx) (negate p))))
-  (define (get-after  ctx p) (takef (unbox ctx) (negate p)))
+  (define (get-before ctx p)
+    (match (dropf (unbox ctx) (negate p))
+      [(cons _ xs) xs]
+      [_ '()]))
+  (define (get-after ctx p)
+    (takef (unbox ctx) (negate p)))
 
 
   ; instantiation algorithm. instantiate evar 'e' to be type 't' under
@@ -229,10 +266,6 @@
   ; e <: t   if dir is '<:
   ; t <: e   if dir is ':>
   (define (inst-evar e dir t [ctx (current-ctx)])
-
-    (define dir-inv
-      (case dir [(<:) ':>] [(:>) '<:]))
-
     (syntax-parse t
       ; rule: Inst[L/R]Solve
       [τ #:when (and (monotype? #'τ)
@@ -256,14 +289,15 @@
        (let* ([tmp (unbox ctx)]
               [e1 (mk-evar)]
               [e2 (mk-evar)]
-              [e1->e2 ((current-type-eval) #`(→ #,e1 #,e2))])
+              [e1->e2 ((current-type-eval) #`(→ #,e1 #,e2))]
+              [dir- (case dir [(<:) ':>] [(:>) '<:])])
          (call-between ctx (ctx-ev/c e)
                        (lambda ()
                          (ctx-cons! (ctx-ev e2) ctx)
                          (ctx-cons! (ctx-ev e1) ctx)
                          (ctx-cons! (e . ctx-ev= . e1->e2) ctx)))
-         (or (and (inst-evar e1 dir-inv #'A1)
-                  (inst-evar e2 dir     (subst-from-ctx #'A2 ctx)))
+         (or (and (inst-evar e1 dir- #'A1)
+                  (inst-evar e2 dir  (subst-from-ctx #'A2 ctx)))
              (begin (set-box! ctx tmp)
                     #f)))]
 
@@ -272,7 +306,7 @@
        #:when (eq? dir '<:)
        (ctx-cons! (ctx-tv #'X) ctx)
        (begin0 (inst-evar e dir #'A)
-         (set-box! ctx (get-before ctx (ctx-tv/c #'X))))]
+         (ctx-pop-until! (ctx-tv/c #'X) ctx))]
 
       ; rule: InstRAllL
       [(~All (X) B)
@@ -282,7 +316,7 @@
          (ctx-cons! mrk ctx)
          (ctx-cons! (ctx-ev ex) ctx)
          (begin0 (inst-evar e dir (subst ex #'X #'B))
-           (set-box! ctx (get-before ctx (ctx-mark/c mrk)))))]
+           (ctx-pop-until! (ctx-mark/c mrk) ctx)))]
 
       [_ #f]))
 
@@ -323,12 +357,12 @@
   ; if t1 can be made to subtype t2 (t1 <: t2). returns #f
   ; otherwise
   (define (subtype t1 t2 [ctx (current-ctx)])
-    #;(printf "~a <: ~a\n" (type->str t1) (type->str t2))
     (syntax-parse (list t1 t2)
       ; rule: <:Unit (plus some new types)
       [(~or (~Unit ~Unit)
             (~Int  ~Int)
             (~Nat  ~Nat)
+            (~Num  ~Num)
 
             (~Nat  ~Int)
             (~Int  ~Num)
@@ -358,7 +392,7 @@
        (begin
          (ctx-cons! (ctx-tv #'X) ctx)
          (begin0 (subtype #'A #'B ctx)
-           (set-box! ctx (get-before ctx (ctx-tv/c #'X)))))]
+           (ctx-pop-until! (ctx-tv/c #'X) ctx)))]
 
       ; rule: <:∀L
       [((~All (X) A) B)
@@ -367,7 +401,7 @@
          (ctx-cons! mrk ctx)
          (ctx-cons! (ctx-ev ex) ctx)
          (begin0 (subtype (subst ex #'X #'A) #'B ctx)
-           (set-box! ctx (get-before ctx (ctx-mark/c mrk)))))]
+           (ctx-pop-until! (ctx-mark/c mrk) ctx)))]
 
       ; TODO: occurs check
       ; rule: <:InstantiateL
@@ -406,24 +440,40 @@
       (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
       ))
 
-  [current-typecheck-relation
-   (lambda (t1 t2)
-     (let ([r (subtype t1 t2)])
-       (printf "~a <: ~a  =>  ~a\n"
-               (type->str t1)
-               (type->str t2)
-               r)
-       r))]
-  )
+[current-typecheck-relation
+ (lambda (t1 t2)
+   (let ([r (subtype (subst-from-ctx t1)
+                     (subst-from-ctx t2))])
+     (printf "~a <: ~a  =>  ~a\n"
+             (type->string t1)
+             (type->string t2)
+             r)
+     r))]
+)
 
 
 
 (provide #%app
          #%datum
          ann
-         (type-out → Nat Int Num)
-         ;lambda [rename-out lambda λ]
+         typeof
+         lambda (rename-out [lambda λ])
+         (type-out → Nat Int Num Unit)
          )
+
+(define-typed-syntax ann
+  [(_ e (~datum :) hint:type) ≫
+   #:with T #'hint.norm
+   [⊢ e ≫ e- ⇐ T]
+   --------
+   [⊢ e- ⇒ T]])
+
+(define-typed-syntax typeof
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ T]
+   #:with s (type->string (subst-from-ctx #'T))
+   --------
+   [⊢ (#%app- displayln 's) ⇒ Unit]])
 
 (define-typed-syntax #%app
   ; sugary ann syntax
@@ -432,6 +482,7 @@
    --------
    [≻ (ann e : hint)]]
 
+  ; this is actually unit syntax
   ; rule: 1I⇒
   [(_) ≫
    --------
@@ -452,9 +503,33 @@
    --------
    [#:error "unsupported datum"]])
 
-(define-typed-syntax ann
-  [(_ e (~datum :) hint:type) ≫
-   #:with T #'hint.norm
-   [⊢ e ≫ e- ⇐ T]
+(define-typed-syntax lambda
+  ; rule: →I
+  [(_ (x) body) ⇐ (~→ τ1 τ2) ≫
+   #:with (x- body-)
+   (let* ([mrk (ctx-mark)]
+          [ctx (current-ctx)])
+     (ctx-cons! mrk ctx)
+     (syntax-parse '()
+       [_ #:and (~typecheck [[x ≫ x- : τ1] ⊢ body ≫ body- ⇐ τ2])
+          (ctx-pop-until! (ctx-mark/c mrk) ctx)
+          #'(x- body-)]))
    --------
-   [⊢ e- ⇒ T]])
+   [⊢ (lambda- (x-) body-)]]
+
+  ; rule: →I⇒
+  [(_ (x) body) ≫
+   #:with e1 (mk-evar #'x)
+   #:with e2 (mk-evar #'body)
+   #:with (x- body-)
+   (let* ([mrk (ctx-mark)]
+          [ctx (current-ctx)])
+     (ctx-cons! (ctx-ev #'e1) ctx)
+     (ctx-cons! (ctx-ev #'e2) ctx)
+     (ctx-cons! mrk ctx)
+     (syntax-parse '()
+       [_ #:and (~typecheck [[x ≫ x- : e1] ⊢ body ≫ body- ⇐ e2])
+          (ctx-pop-until! (ctx-mark/c mrk) ctx)
+          #'(x- body-)]))
+   --------
+   [⊢ (lambda- (x-) body-) ⇒ (→ e1 e2)]])
