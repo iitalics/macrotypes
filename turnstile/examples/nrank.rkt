@@ -325,9 +325,6 @@
             (~Nat  ~Int))
        #t]
 
-      [(~Int ~Nat)
-       #f]
-
       [(~and (e1 e2) ((~Evar _) (~Evar _)))
        #:when (Evar=? #'e1 #'e2)
        #t]
@@ -345,8 +342,8 @@
           [Nat ((current-type-eval) #'Nat)]
           [Unit ((current-type-eval) #'Unit)]
           [I->I ((current-type-eval) #'(→ Int Int))]
-          [I->N ((current-type-eval) #'(→ Int Int))]
-          [N->I ((current-type-eval) #'(→ Int Int))])
+          [I->N ((current-type-eval) #'(→ Int Nat))]
+          [N->I ((current-type-eval) #'(→ Nat Int))])
       ; basic types
       (check-not-false (subtype Int Int))
       (check-not-false (subtype Nat Int))
