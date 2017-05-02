@@ -1,6 +1,5 @@
-#lang racket
-(require turnstile
-         (for-syntax racket
+#lang turnstile/lang
+(require (for-syntax racket
                      rackunit))
 
 ; fundamental types
@@ -343,10 +342,12 @@
 
       ; rule: <:-→
       [((~→ A1 A2) (~→ B1 B2))
-       (and (subtype #'B1 #'A1 ctx)
-            (subtype (subst-from-ctx #'A2 ctx)
-                     (subst-from-ctx #'B2 ctx)
-                     ctx))]
+       (let ([tmp (unbox ctx)])
+         (or (and (subtype #'B1 #'A1 ctx)
+                  (subtype (subst-from-ctx #'A2 ctx)
+                           (subst-from-ctx #'B2 ctx)
+                           ctx))
+             (begin (set-box! ctx tmp) #f)))]
 
       ; rule: <:∀R
       [(A (~All (X) B))
@@ -355,7 +356,17 @@
          (begin0 (subtype #'A #'B ctx)
            (set-box! ctx (get-before ctx (ctx-tv/c #'X)))))]
 
-      [_ #f]))
+      ; rule: <:∀L
+      [((~All (X) A) B)
+       (let ([mrk (ctx-mark)]
+             [ex (mk-evar #'X)])
+         (ctx-cons! mrk ctx)
+         (ctx-cons! (ctx-ev ex) ctx)
+         (begin0 (subtype (subst ex #'X #'A) #'B ctx)
+           (set-box! ctx (get-before ctx (ctx-mark/c mrk)))))]
+
+      [_ ;#:do [(printf "~a <: ~a.\n" (type->str t1) (type->str t2))]
+       #f]))
 
   (parameterize ([current-ctx (mk-ctx*)])
     (let ([Int ((current-type-eval) #'Int)]
@@ -363,7 +374,8 @@
           [Unit ((current-type-eval) #'Unit)]
           [I->I ((current-type-eval) #'(→ Int Int))]
           [I->N ((current-type-eval) #'(→ Int Nat))]
-          [N->I ((current-type-eval) #'(→ Nat Int))])
+          [N->I ((current-type-eval) #'(→ Nat Int))]
+          [∀X.X ((current-type-eval) #'(All (X) X))])
       ; basic types
       (check-not-false (subtype Int Int))
       (check-not-false (subtype Nat Int))
@@ -375,9 +387,10 @@
       (check-not-false (subtype I->I N->I))
       (check-false     (subtype N->I I->I))
       ; foralls
-      (check-false (subtype Int ((current-type-eval) #'(All (X) X))))
+      (check-false     (subtype Int ∀X.X))
+      #;(check-not-false (subtype ∀X.X Int))
       (check-equal? (unbox (current-ctx)) '())
-      (check-not-false (subtype Nat ((current-type-eval) #'(All (X) Int))))))
-
+      (check-not-false (subtype Nat ((current-type-eval) #'(All (X) Int))))
+      ))
 
   )
