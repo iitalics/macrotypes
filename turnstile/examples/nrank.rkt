@@ -218,6 +218,11 @@
       (begin0 (fn)
         (ctx-append! a ctx))))
 
+  ; get parts of a context before/after the first (latest) element that
+  ; maches the given predicate
+  (define (get-before ctx p) (cdr (dropf (unbox ctx) (negate p))))
+  (define (get-after  ctx p) (takef (unbox ctx) (negate p)))
+
 
   ; instantiation algorithm. instantiate evar 'e' to be type 't' under
   ; the given context, in the given direction. returns #t if succeeds,
@@ -226,16 +231,13 @@
   ; t <: e   if dir is ':>
   (define (inst-evar e dir t [ctx (current-ctx)])
 
-    (define (get-before p) (cdr (dropf (unbox ctx) (negate p))))
-    (define (get-after p) (takef (unbox ctx) (negate p)))
-
     (define dir-inv
       (case dir [(<:) ':>] [(:>) '<:]))
 
     (syntax-parse t
       ; rule: Inst[L/R]Solve
       [τ #:when (and (monotype? #'τ)
-                     (well-formed?/list #'τ (get-before (ctx-ev/c e))))
+                     (well-formed?/list #'τ (get-before ctx (ctx-ev/c e))))
          (call-between ctx (ctx-ev/c e)
                        (lambda ()
                          (ctx-cons! (e . ctx-ev= . #'τ) ctx)
@@ -244,7 +246,7 @@
       ; rule: Inst[L/R]Reach
       [(~and e2 (~Evar _))
        (and (memf (ctx-ev/c #'e2)
-                  (get-after (ctx-ev/c e)))
+                  (get-after ctx (ctx-ev/c e)))
             (call-between ctx (ctx-ev/c #'e2)
                           (lambda ()
                             (ctx-cons! (#'e2 . ctx-ev= . e) ctx)
@@ -263,14 +265,15 @@
                          (ctx-cons! (e . ctx-ev= . e1->e2) ctx)))
          (or (and (inst-evar e1 dir-inv #'A1)
                   (inst-evar e2 dir     (subst-from-ctx #'A2 ctx)))
-             (begin (set-box! ctx tmp) #f)))]
+             (begin (set-box! ctx tmp)
+                    #f)))]
 
       ; rule: InstLAllR
       [(~All (X) A)
        #:when (eq? dir '<:)
        (ctx-cons! (ctx-tv #'X) ctx)
        (begin0 (inst-evar e dir #'A)
-         (set-box! ctx (get-before (ctx-tv/c #'X))))]
+         (set-box! ctx (get-before ctx (ctx-tv/c #'X))))]
 
       ; rule: InstRAllL
       [(~All (X) B)
@@ -280,7 +283,7 @@
          (ctx-cons! mrk ctx)
          (ctx-cons! (ctx-ev ex) ctx)
          (begin0 (inst-evar e dir (subst ex #'X #'B))
-           (set-box! ctx (get-before (ctx-mark/c mrk)))))]
+           (set-box! ctx (get-before ctx (ctx-mark/c mrk)))))]
 
       [_ #f]))
 
@@ -345,6 +348,13 @@
                      (subst-from-ctx #'B2 ctx)
                      ctx))]
 
+      ; rule: <:∀R
+      [(A (~All (X) B))
+       (begin
+         (ctx-cons! (ctx-tv #'X) ctx)
+         (begin0 (subtype #'A #'B ctx)
+           (set-box! ctx (get-before ctx (ctx-tv/c #'X)))))]
+
       [_ #f]))
 
   (parameterize ([current-ctx (mk-ctx*)])
@@ -363,7 +373,11 @@
       (check-not-false (subtype I->I I->I))
       (check-not-false (subtype I->N I->I))
       (check-not-false (subtype I->I N->I))
-      (check-false     (subtype N->I I->I))))
+      (check-false     (subtype N->I I->I))
+      ; foralls
+      (check-false (subtype Int ((current-type-eval) #'(All (X) X))))
+      (check-equal? (unbox (current-ctx)) '())
+      (check-not-false (subtype Nat ((current-type-eval) #'(All (X) Int))))))
 
 
   )
