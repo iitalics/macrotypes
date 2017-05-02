@@ -115,7 +115,7 @@
   ; contract for ctx-tv's that contain the same bound identifier
   (define (ctx-tv/c id)
     (match-lambda
-      [(ctx-tv id2) (bound-identifier=? id id2)]
+      [(ctx-tv id2) (type=? id id2)]
       [_ #f]))
 
   ; contract for ctx-ev's that contain the same Evar
