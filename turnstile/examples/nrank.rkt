@@ -3,7 +3,7 @@
                      rackunit))
 
 ; fundamental types
-(define-base-types Unit Int Nat)
+(define-base-types Unit Num Int Nat)
 (define-type-constructor → #:arity = 2)
 (define-binding-type All #:bvs = 1 #:arity = 1)
 
@@ -329,7 +329,10 @@
       [(~or (~Unit ~Unit)
             (~Int  ~Int)
             (~Nat  ~Nat)
-            (~Nat  ~Int))
+
+            (~Nat  ~Int)
+            (~Int  ~Num)
+            (~Nat  ~Num))
        #t]
 
       ; rule: <:Var
@@ -403,4 +406,40 @@
       (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
       ))
 
+
+
+  (let ([ctr (current-typecheck-relation)])
+    [current-typecheck-relation
+     (lambda args
+       (printf "typecheck!\n")
+       (apply ctr args))])
+
   )
+
+
+
+(provide #%app
+         #%datum
+         ;lambda [rename-out lambda λ]
+         )
+
+(define-typed-syntax #%app
+  ; rule: 1I⇒
+  [(_) ≫
+   --------
+   [⊢ '() ⇒ Unit]])
+
+(define-typed-syntax #%datum
+  ; rule: 1I⇒ (extended for other datum)
+  [(_ . k:nat) ≫
+   -------
+   [⊢ 'k ⇒ Nat]]
+  [(_ . k:exact-integer) ≫
+   --------
+   [⊢ 'k ⇒ Int]]
+  [(_ . k:number) ≫
+   --------
+   [⊢ 'k ⇒ Num]]
+  [_ ≫
+   --------
+   [#:error "unsupported datum"]])
