@@ -406,24 +406,32 @@
       (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
       ))
 
-
-
-  (let ([ctr (current-typecheck-relation)])
-    [current-typecheck-relation
-     (lambda args
-       (printf "typecheck!\n")
-       (apply ctr args))])
-
+  [current-typecheck-relation
+   (lambda (t1 t2)
+     (let ([r (subtype t1 t2)])
+       (printf "~a <: ~a  =>  ~a\n"
+               (type->str t1)
+               (type->str t2)
+               r)
+       r))]
   )
 
 
 
 (provide #%app
          #%datum
+         ann
+         (type-out → Nat Int Num)
          ;lambda [rename-out lambda λ]
          )
 
 (define-typed-syntax #%app
+  ; sugary ann syntax
+  [{_ e (~datum :) hint} ≫
+   #:when (equal? #\{ (syntax-property this-syntax 'paren-shape))
+   --------
+   [≻ (ann e : hint)]]
+
   ; rule: 1I⇒
   [(_) ≫
    --------
@@ -443,3 +451,10 @@
   [_ ≫
    --------
    [#:error "unsupported datum"]])
+
+(define-typed-syntax ann
+  [(_ e (~datum :) hint:type) ≫
+   #:with T #'hint.norm
+   [⊢ e ≫ e- ⇐ T]
+   --------
+   [⊢ e- ⇒ T]])
