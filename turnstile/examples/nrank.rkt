@@ -440,17 +440,12 @@
       (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
       ))
 
-[current-typecheck-relation
- (lambda (t1 t2)
-   (let ([r (subtype (subst-from-ctx t1)
-                     (subst-from-ctx t2))])
-     (printf "~a <: ~a  =>  ~a\n"
-             (type->string t1)
-             (type->string t2)
-             r)
-     r))]
-)
-
+  [current-typecheck-relation
+   (lambda (t1 t2)
+     ; rule: Sub
+     (subtype (subst-from-ctx t1)
+              (subst-from-ctx t2)))]
+  )
 
 
 (provide #%app
@@ -461,19 +456,22 @@
          (type-out → Nat Int Num Unit)
          )
 
-(define-typed-syntax ann
-  [(_ e (~datum :) hint:type) ≫
-   #:with T #'hint.norm
-   [⊢ e ≫ e- ⇐ T]
-   --------
-   [⊢ e- ⇒ T]])
-
+; prints the type of an expression
 (define-typed-syntax typeof
   [(_ e) ≫
    [⊢ e ≫ e- ⇒ T]
    #:with s (type->string (subst-from-ctx #'T))
    --------
    [⊢ (#%app- displayln 's) ⇒ Unit]])
+
+
+(define-typed-syntax ann
+  ; rule: Anno
+  [(_ e (~datum :) hint:type) ≫
+   #:with T #'hint.norm
+   [⊢ e ≫ e- ⇐ T]
+   --------
+   [⊢ e- ⇒ T]])
 
 (define-typed-syntax #%app
   ; sugary ann syntax
