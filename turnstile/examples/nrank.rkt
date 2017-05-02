@@ -208,22 +208,23 @@
        (check-not-false (well-formed? #'T (mk-ctx* (ctx-tv #'Y))))]))
 
 
+  ; calls fn such that any affects to ctx will be applied
+  ; in the space instead of the first found element that
+  ; matches predicate 'p'.
+  (define (call-between ctx p fn)
+    (let-values ([(a b) (splitf-at (unbox ctx)
+                                   (negate p))])
+      (set-box! ctx (cdr b))
+      (begin0 (fn)
+        (ctx-append! a ctx))))
+
+
   ; instantiation algorithm. instantiate evar 'e' to be type 't' under
   ; the given context, in the given direction. returns #t if succeeds,
   ; #f if fails to instantiate.
   ; e <: t   if dir is '<:
   ; t <: e   if dir is ':>
   (define (inst-evar e dir t [ctx (current-ctx)])
-
-    ; calls fn such that any affects to ctx will be applied
-    ; in the space instead of the first found element that
-    ; matches predicate 'p'.
-    (define (call-between p fn)
-      (let-values ([(a b) (splitf-at (unbox ctx)
-                                     (negate p))])
-        (set-box! ctx (cdr b))
-        (begin0 (fn)
-          (ctx-append! a ctx))))
 
     (define (get-before p) (cdr (dropf (unbox ctx) (negate p))))
     (define (get-after p) (takef (unbox ctx) (negate p)))
@@ -235,7 +236,7 @@
       [τ ; Inst[L/R]Solve
        #:when (and (monotype? #'τ)
                    (well-formed?/list #'τ (get-before (ctx-ev/c e))))
-       (call-between (ctx-ev/c e)
+       (call-between ctx (ctx-ev/c e)
                      (lambda ()
                        (ctx-cons! (e . ctx-ev= . #'τ) ctx)
                        #t))]
@@ -243,7 +244,7 @@
       [(~and e2 (~Evar _)) ; Inst[L/R]Reach
        (and (memf (ctx-ev/c #'e2)
                   (get-after (ctx-ev/c e)))
-            (call-between (ctx-ev/c #'e2)
+            (call-between ctx (ctx-ev/c #'e2)
                           (lambda ()
                             (ctx-cons! (#'e2 . ctx-ev= . e) ctx)
                             #t)))]
@@ -253,7 +254,7 @@
               [e1 (mk-evar)]
               [e2 (mk-evar)]
               [e1->e2 ((current-type-eval) #`(→ #,e1 #,e2))])
-         (call-between (ctx-ev/c e)
+         (call-between ctx (ctx-ev/c e)
                        (lambda ()
                          (ctx-cons! (ctx-ev e2) ctx)
                          (ctx-cons! (ctx-ev e1) ctx)
@@ -310,5 +311,52 @@
       (check-not-false (inst-evar e1 ':> T3))
       (check-equal? (unbox (current-ctx))
                     (list (ctx-ev e2) (ctx-ev e1)))))
+
+
+  ; subtype algorithm. returns #t and modifies the context
+  ; if t1 can be made to subtype t2 (t1 <: t2). returns #f
+  ; otherwise
+  (define (subtype t1 t2 [ctx (current-ctx)])
+    (syntax-parse (list t1 t2)
+      ; TODO: make this extensible
+      [(~or (~Unit ~Unit)
+            (~Int  ~Int)
+            (~Nat  ~Nat)
+            (~Nat  ~Int))
+       #t]
+
+      [(~Int ~Nat)
+       #f]
+
+      [(~and (e1 e2) ((~Evar _) (~Evar _)))
+       #:when (Evar=? #'e1 #'e2)
+       #t]
+
+      [((~→ A1 A2) (~→ B1 B2))
+       (and (subtype #'B1 #'A1 ctx)
+            (subtype (subst-from-ctx #'A2 ctx)
+                     (subst-from-ctx #'B2 ctx)
+                     ctx))]
+
+      [_ #f]))
+
+  (parameterize ([current-ctx (mk-ctx*)])
+    (let ([Int ((current-type-eval) #'Int)]
+          [Nat ((current-type-eval) #'Nat)]
+          [Unit ((current-type-eval) #'Unit)]
+          [I->I ((current-type-eval) #'(→ Int Int))]
+          [I->N ((current-type-eval) #'(→ Int Int))]
+          [N->I ((current-type-eval) #'(→ Int Int))])
+      ; basic types
+      (check-not-false (subtype Int Int))
+      (check-not-false (subtype Nat Int))
+      (check-false     (subtype Int Nat))
+      (check-false     (subtype Int Unit))
+      ; function type (variance!)
+      (check-not-false (subtype I->I I->I))
+      (check-not-false (subtype I->N I->I))
+      (check-not-false (subtype I->I N->I))
+      (check-false     (subtype N->I I->I))))
+
 
   )
