@@ -5,7 +5,7 @@
 ; fundamental types
 (define-base-types Unit Num Int Nat)
 (define-type-constructor → #:arity = 2)
-(define-binding-type All #:bvs = 1 #:arity = 1)
+(define-binding-type All #:arity = 1 #:bvs = 1)
 
 (begin-for-syntax
   ; a monotype is a type without quantifications (foralls)
@@ -37,9 +37,11 @@
                           (type->string #'T1)
                           (type->string #'T2))]
       [(~All (X) T) (format "(∀ (~a) ~a)"
-                            (type->string #'X #'T))]
+                            (syntax-e #'X)
+                            (type->string #'T))]
       [(~Evar ((~literal quote) s)) (format "{~a}"
-                                            (syntax-e #'s))]))
+                                            (syntax-e #'s))]
+      [x:id (symbol->string (syntax-e #'x))]))
 
   ; generates a new evar
   (define (mk-evar [src #f])
@@ -371,7 +373,7 @@
 
       ; rule: <:Var
       [(x:id y:id)
-       (bound-identifier=? #'x #'y)]
+       (type=? #'x #'y)]
 
       ; rule: <:Exvar
       [(~and (e1 e2) ((~Evar _) (~Evar _)))
@@ -438,13 +440,21 @@
       (check-equal? (unbox (current-ctx)) '())
       (check-not-false (subtype Nat ((current-type-eval) #'(All (X) Int))))
       (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
+      (check-equal? (unbox (current-ctx)) '())
       ))
 
   [current-typecheck-relation
    (lambda (t1 t2)
      ; rule: Sub
-     (subtype (subst-from-ctx t1)
-              (subst-from-ctx t2)))]
+     (let* ([t1- (subst-from-ctx t1)]
+            [t2- (subst-from-ctx t2)])
+       (printf "typecheck: ~a <: ~a\n"
+               (type->string t1)
+               (type->string t2))
+       (let ([sub? (subtype t1- t2-)])
+         (printf "  => ~a\n" sub?)
+         sub?)))]
+
   )
 
 
@@ -453,7 +463,8 @@
          ann
          typeof
          lambda (rename-out [lambda λ])
-         (type-out → Nat Int Num Unit)
+         (type-out All →
+                   Nat Int Num Unit)
          )
 
 ; prints the type of an expression
@@ -505,29 +516,35 @@
   ; rule: →I
   [(_ (x) body) ⇐ (~→ τ1 τ2) ≫
    #:with (x- body-)
-   (let* ([mrk (ctx-mark)]
-          [ctx (current-ctx)])
-     (ctx-cons! mrk ctx)
+   (let* ([mrk (ctx-mark)])
+     (ctx-cons! mrk)
      (syntax-parse '()
        [_ #:and (~typecheck [[x ≫ x- : τ1] ⊢ body ≫ body- ⇐ τ2])
-          (ctx-pop-until! (ctx-mark/c mrk) ctx)
+          (ctx-pop-until! (ctx-mark/c mrk))
           #'(x- body-)]))
    --------
    [⊢ (lambda- (x-) body-)]]
+
+  ; rule: ∀I
+  [(_ (x) body) ⇐ (~All (X) A) ≫
+   #:do [(ctx-cons! (ctx-tv #'X))]
+   [⊢ (lambda (x) body) ≫ e- ⇐ A]
+   #:do [(ctx-pop-until! (ctx-tv/c #'X))]
+   --------
+   [⊢ e-]]
 
   ; rule: →I⇒
   [(_ (x) body) ≫
    #:with e1 (mk-evar #'x)
    #:with e2 (mk-evar #'body)
    #:with (x- body-)
-   (let* ([mrk (ctx-mark)]
-          [ctx (current-ctx)])
-     (ctx-cons! (ctx-ev #'e1) ctx)
-     (ctx-cons! (ctx-ev #'e2) ctx)
-     (ctx-cons! mrk ctx)
+   (let* ([mrk (ctx-mark)])
+     (ctx-cons! (ctx-ev #'e1))
+     (ctx-cons! (ctx-ev #'e2))
+     (ctx-cons! mrk)
      (syntax-parse '()
        [_ #:and (~typecheck [[x ≫ x- : e1] ⊢ body ≫ body- ⇐ e2])
-          (ctx-pop-until! (ctx-mark/c mrk) ctx)
+          (ctx-pop-until! (ctx-mark/c mrk))
           #'(x- body-)]))
    --------
    [⊢ (lambda- (x-) body-) ⇒ (→ e1 e2)]])
