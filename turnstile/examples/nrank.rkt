@@ -323,6 +323,7 @@
   ; if t1 can be made to subtype t2 (t1 <: t2). returns #f
   ; otherwise
   (define (subtype t1 t2 [ctx (current-ctx)])
+    #;(printf "~a <: ~a\n" (type->str t1) (type->str t2))
     (syntax-parse (list t1 t2)
       ; rule: <:Unit (plus some new types)
       [(~or (~Unit ~Unit)
@@ -365,7 +366,15 @@
          (begin0 (subtype (subst ex #'X #'A) #'B ctx)
            (set-box! ctx (get-before ctx (ctx-mark/c mrk)))))]
 
-      [_ ;#:do [(printf "~a <: ~a.\n" (type->str t1) (type->str t2))]
+      ; TODO: occurs check
+      ; rule: <:InstantiateL
+      [((~and (~Evar _) e) A)
+       (inst-evar #'e '<: #'A ctx)]
+      ; rule: <:InstantiateR
+      [(A (~and (~Evar _) e))
+       (inst-evar #'e ':> #'A ctx)]
+
+      [_
        #f]))
 
   (parameterize ([current-ctx (mk-ctx*)])
@@ -388,9 +397,10 @@
       (check-false     (subtype N->I I->I))
       ; foralls
       (check-false     (subtype Int ∀X.X))
-      #;(check-not-false (subtype ∀X.X Int))
+      (check-not-false (subtype ∀X.X Int))
       (check-equal? (unbox (current-ctx)) '())
       (check-not-false (subtype Nat ((current-type-eval) #'(All (X) Int))))
+      (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
       ))
 
   )
