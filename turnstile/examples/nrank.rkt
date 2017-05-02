@@ -329,6 +329,10 @@
             (~Nat  ~Int))
        #t]
 
+      ; rule: <:Var
+      [(x:id y:id)
+       (bound-identifier=? #'x #'y)]
+
       ; rule: <:Exvar
       [(~and (e1 e2) ((~Evar _) (~Evar _)))
        #:when (Evar=? #'e1 #'e2)
