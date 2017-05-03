@@ -29,7 +29,7 @@
 (begin-for-syntax
   (define (type->string t)
     (syntax-parse t
-      [~Unit "1"]
+      [~Unit "Unit"]
       [~Nat "Nat"]
       [~Int "Int"]
       [~Num "Num"]
@@ -46,6 +46,8 @@
   ; generates a new evar
   (define (mk-evar [src #f])
     (define uniq-sym (gensym (syntax-parse src
+                               [(~Evar (_ s)) (substring (symbol->string (syntax-e #'s))
+                                                         0 3)]
                                [x:id (syntax-e #'x)]
                                [_ 'E])))
     (with-syntax ([quot-sym (mk-type #`(quote #,uniq-sym))])
@@ -110,7 +112,7 @@
   (struct ctx-tv (id) #:transparent)
   (struct ctx-ev (ev) #:transparent)
   (struct ctx-ev= (ev ty) #:transparent)
-  (struct ctx-mark ())
+  (struct ctx-mark (desc))
 
   ; contract for ctx-tv's that contain the same bound identifier
   (define (ctx-tv/c id)
@@ -137,9 +139,9 @@
         [(ctx-ev e)    (printf "ev: ~a\n" (type->string e))]
         [(ctx-ev= e t) (printf "ev: ~a = ~a\n" (type->string e) (type->string t))]
         [(ctx-tv v)    (printf "tv: ~a\n" (syntax-e v))]
-        [(ctx-mark)    (if (eq? ce mrk)
-                           (printf "mark*\n")
-                           (printf "mark\n"))]))
+        [(ctx-mark d)  (if (eq? ce mrk)
+                           (printf "*mark ~a\n" d)
+                           (printf "mark ~a\n" d))]))
     (printf ";\n"))
 
 
@@ -172,7 +174,7 @@
         [(cons elem rst)
          (trav rst (cons elem acc))])))
 
-  (let* ([mrk1 (ctx-mark)] [mrk2 (ctx-mark)] [e1 (mk-evar)] [e2 (mk-evar)]
+  (let* ([mrk1 (ctx-mark 'm1)] [mrk2 (ctx-mark 'm2)] [e1 (mk-evar)] [e2 (mk-evar)]
          [ctx (mk-ctx* mrk1
                        (ctx-ev e1)
                        mrk2
@@ -198,7 +200,7 @@
          [T1 ((current-type-eval) #`(→ #,e1 (→ #,e2 Nat)))]
          [T2 ((current-type-eval) #`(→ Int (→ Int Nat)))])
     (check-equal? (syntax->datum (subst-from-ctx T1
-                                                 (mk-ctx* (ctx-mark)
+                                                 (mk-ctx* (ctx-mark 'm1)
                                                           (e2 . ctx-ev= . e1)
                                                           (ctx-ev e2)
                                                           (e1 . ctx-ev= . Int))))
@@ -289,8 +291,8 @@
       ; rule: Inst[L/R]Arr
       [(~→ A1 A2)
        (let* ([tmp (unbox ctx)]
-              [e1 (mk-evar)]
-              [e2 (mk-evar)]
+              [e1 (mk-evar e)]
+              [e2 (mk-evar e)]
               [e1->e2 ((current-type-eval) #`(→ #,e1 #,e2))]
               [dir- (case dir [(<:) ':>] [(:>) '<:])])
          (call-between ctx (ctx-ev/c e)
@@ -314,7 +316,7 @@
       [(~All (X) B)
        #:when (eq? dir ':>)
        (let* ([ex (mk-evar #'X)]
-              [mrk (ctx-mark)])
+              [mrk (ctx-mark (format "▹~a" (syntax-e #'X)))])
          (ctx-cons! mrk ctx)
          (ctx-cons! (ctx-ev ex) ctx)
          (begin0 (inst-evar e dir (subst ex #'X #'B))
@@ -398,7 +400,7 @@
 
       ; rule: <:∀L
       [((~All (X) A) B)
-       (let ([mrk (ctx-mark)]
+       (let ([mrk (ctx-mark (format "▹~a" (syntax-e #'X)))]
              [ex (mk-evar #'X)])
          (ctx-cons! mrk ctx)
          (ctx-cons! (ctx-ev ex) ctx)
@@ -413,8 +415,7 @@
       [(A (~and (~Evar _) e))
        (inst-evar #'e ':> #'A ctx)]
 
-      [_
-       #f]))
+      [_ #f]))
 
   (parameterize ([current-ctx (mk-ctx*)])
     (let ([Int ((current-type-eval) #'Int)]
@@ -447,16 +448,42 @@
       ))
 
   [current-typecheck-relation
-   (lambda (t1 t2)
-     ; rule: Sub
-     (let* ([t1- (subst-from-ctx t1)]
-            [t2- (subst-from-ctx t2)])
-       (printf "typecheck: ~a <: ~a\n"
-               (type->string t1)
-               (type->string t2))
-       (let ([sub? (subtype t1- t2-)])
-         (printf "  => ~a\n" sub?)
-         sub?)))]
+   (λ (t1 t2)
+     (cond
+       ; for some reason turnstile keeps calling this with the same two arguments
+       [(eq? t1 t2) #t]
+       [else
+        ; rule: Sub
+        (let* ([t1- (subst-from-ctx t1)]
+               [t2- (subst-from-ctx t2)])
+          (printf "typecheck: ~a <: ~a\n"
+                  (type->string t1-)
+                  (type->string t2-))
+          (display-ctx (current-ctx))
+          (let ([sub? (subtype t1- t2-)])
+            (printf "  => ~a\n" sub?)
+            sub?))]))]
+
+  (define (tycheck expr t
+                   [x:ts '()]
+                   #:before [before-fn void]
+                   #:after [after-fn void])
+    (syntax-parse t
+      ; rule: ∀I
+      [(~All (X) T)
+       #:do [(ctx-cons! (ctx-tv #'X))]
+       #:with ((x- ...) expr-) (tycheck expr #'T x:ts
+                                        #:before before-fn
+                                        #:after after-fn)
+       #:do [(ctx-pop-until! (ctx-tv/c #'X))]
+       #'((x- ...) expr-)]
+
+      [(~and T ~!)
+       #:with ([x τ] ...) x:ts
+       #:do [(before-fn)]
+       #:and (~typecheck [[x ≫ x- : τ] ... ⊢ #,expr ≫ expr- ⇐ T])
+       #:do [(after-fn)]
+       #'((x- ...) expr-)]))
 
   )
 
@@ -466,8 +493,7 @@
          ann
          typeof
          lambda (rename-out [lambda λ])
-         (type-out All →
-                   Nat Int Num Unit)
+         (type-out All → Nat Int Num Unit)
          )
 
 ; prints the type of an expression
@@ -483,7 +509,7 @@
   ; rule: Anno
   [(_ e (~datum :) hint:type) ≫
    #:with T #'hint.norm
-   [⊢ e ≫ e- ⇐ T]
+   #:with (() e-) (tycheck #'e #'T)
    --------
    [⊢ e- ⇒ T]])
 
@@ -495,6 +521,12 @@
    [≻ (ann e : hint)]]
 
   ; this is actually unit syntax
+  ; rule: 1I
+  [(_) ⇐ u ≫
+   #:when (Unit? #'u)
+   --------
+   [⊢ '()]]
+
   ; rule: 1I⇒
   [(_) ≫
    --------
@@ -518,39 +550,54 @@
 (define-typed-syntax lambda
   ; rule: →I
   [(_ (x) body) ⇐ (~→ τ1 τ2) ≫
-   #:with (x- body-)
-   (let* ([mrk (ctx-mark)])
-     (ctx-cons! mrk)
-     (syntax-parse '()
-       [_ #:and (~typecheck [[x ≫ x- : τ1] ⊢ body ≫ body- ⇐ τ2])
-          (ctx-pop-until! (ctx-mark/c mrk))
-          #'(x- body-)]))
+   #:with ((x-) body-)
+   (let ([mrk (ctx-mark (format "~a : ~a"
+                                (syntax-e #'x)
+                                (type->string #'τ1)))])
+     (tycheck #'body #'τ2 #'([x τ1])
+              #:before (lambda () (ctx-cons! mrk))
+              #:after  (lambda () (ctx-pop-until! (ctx-mark/c mrk)))))
    --------
    [⊢ (lambda- (x-) body-)]]
 
-  ; rule: ∀I
-  [(_ (x) body) ⇐ (~All (X) A) ≫
-   #:do [(ctx-cons! (ctx-tv #'X))]
-   [⊢ (lambda (x) body) ≫ e- ⇐ A]
-   #:do [(ctx-pop-until! (ctx-tv/c #'X))]
+  [(_ (x) body) ⇐ τ ≫
+   #:when (not (Evar? #'τ))
+   #:with (~!) '()
    --------
-   [⊢ e-]]
+   [#:error (format "unexpected function; expected type ~a"
+                    (type->string #'τ))]]
 
   ; rule: →I⇒
   [(_ (x) body) ≫
    #:with e1 (mk-evar #'x)
-   #:with e2 (mk-evar #'body)
-   #:with (x- body-)
-   (let* ([mrk (ctx-mark)])
-     (ctx-cons! (ctx-ev #'e1))
-     (ctx-cons! (ctx-ev #'e2))
-     (ctx-cons! mrk)
-     (syntax-parse '()
-       [_ #:and (~typecheck [[x ≫ x- : e1] ⊢ body ≫ body- ⇐ e2])
-          (ctx-pop-until! (ctx-mark/c mrk))
-          #'(x- body-)]))
+   #:with e2 (mk-evar)
+   #:with ((x-) body-)
+   (let* ([mrk (ctx-mark (format "~a : ??" (syntax-e #'x)))])
+     (tycheck #'body #'e2 #'([x e1])
+              #:before (lambda ()
+                         (ctx-cons! (ctx-ev #'e1))
+                         (ctx-cons! (ctx-ev #'e2))
+                         (ctx-cons! mrk))
+              #:after (lambda ()
+                        (ctx-pop-until! (ctx-mark/c mrk)))))
    --------
    [⊢ (lambda- (x-) body-) ⇒ (→ e1 e2)]])
 
 
-#;(ann (λ (x) (λ (y) x)) : (All (X) (All (Y) (→ X (→ Y X)))))
+(provide print-ctx reset-ctx)
+(define-typed-syntax print-ctx
+  [_ ≫
+   #:do [(display-ctx (current-ctx))]
+   --------
+   [⊢ (#%app- void) ⇒ Unit]])
+
+(define-typed-syntax reset-ctx
+  [_ ≫
+   #:do [(set-box! (current-ctx) '())]
+   ---------
+   [⊢ (#%app- void) ⇒ Unit]])
+
+; (ann (λ (x) (λ (y) x)) : (All (X) (All (Y) (→ X (→ Y X)))))
+; (ann (λ (x) (λ (y) x)) : (All (X) (→ X (All (Y) (→ Y X)))))
+; (ann (λ (x) (λ (y) y)) : (All (X) (→ X (All (Y) (→ Y Y)))))
+; (ann (λ (x) x) : (→ Int Int))
