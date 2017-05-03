@@ -228,8 +228,7 @@
             (well-formed?/list #'B ctxl))]
       [(~All (X) T)
        (well-formed?/list #'T (cons (ctx-tv #'X) ctxl))]
-      [(~or ~Unit ~Int ~Nat) #t]
-      [_ #f]))
+      [_ #t]))
 
   (let* ([e1 (mk-evar)] [e2 (mk-evar)]
          [Nat ((current-type-eval) #'Nat)]
@@ -271,9 +270,26 @@
   ; t <: e   if dir is ':>
   (define (inst-evar e dir t [ctx (current-ctx)])
     (syntax-parse t
+      ; rule: InstLAllR
+      [(~All (X) A)
+       #:when (eq? dir '<:)
+       (ctx-cons! (ctx-tv #'X) ctx)
+       (begin0 (inst-evar e dir #'A)
+         (ctx-pop-until! (ctx-tv/c #'X) ctx))]
+
+      ; rule: InstRAllL
+      [(~All (X) B)
+       #:when (eq? dir ':>)
+       (let* ([ex (mk-evar #'X)]
+              [mrk (ctx-mark (format "▹~a" (syntax-e #'X)))])
+         (ctx-cons! mrk ctx)
+         (ctx-cons! (ctx-ev ex) ctx)
+         (begin0 (inst-evar e dir (subst ex #'X #'B))
+           (ctx-pop-until! (ctx-mark/c mrk) ctx)))]
+
       ; rule: Inst[L/R]Solve
       [τ #:when (and (monotype? #'τ)
-                     (well-formed?/list #'τ (get-before ctx (ctx-ev/c e))))
+                   (well-formed?/list #'τ (get-before ctx (ctx-ev/c e))))
          (call-between ctx (ctx-ev/c e)
                        (lambda ()
                          (ctx-cons! (e . ctx-ev= . #'τ) ctx)
@@ -304,23 +320,6 @@
                   (inst-evar e2 dir  (subst-from-ctx #'A2 ctx)))
              (begin (set-box! ctx tmp)
                     #f)))]
-
-      ; rule: InstLAllR
-      [(~All (X) A)
-       #:when (eq? dir '<:)
-       (ctx-cons! (ctx-tv #'X) ctx)
-       (begin0 (inst-evar e dir #'A)
-         (ctx-pop-until! (ctx-tv/c #'X) ctx))]
-
-      ; rule: InstRAllL
-      [(~All (X) B)
-       #:when (eq? dir ':>)
-       (let* ([ex (mk-evar #'X)]
-              [mrk (ctx-mark (format "▹~a" (syntax-e #'X)))])
-         (ctx-cons! mrk ctx)
-         (ctx-cons! (ctx-ev ex) ctx)
-         (begin0 (inst-evar e dir (subst ex #'X #'B))
-           (ctx-pop-until! (ctx-mark/c mrk) ctx)))]
 
       [_ #f]))
 
@@ -506,6 +505,19 @@
        #:with (() arg-) (tycheck arg #'A)
        #'(C arg-)]
 
+      ; rule: αApp
+      [(~and e (~Evar _))
+       #:with e1 (mk-evar #'arg)
+       #:with e2 (mk-evar #'ret)
+       #:with e1->e2 ((current-type-eval) #'(→ e1 e2))
+       #:do [(call-between (current-ctx) (ctx-ev/c #'e)
+                           (lambda _
+                             (ctx-cons! (ctx-ev #'e2))
+                             (ctx-cons! (ctx-ev #'e1))
+                             (ctx-cons! (#'e . ctx-ev= . #'e1->e2))))]
+       #:with (() arg-) (tycheck arg #'e1)
+       #'(e2 arg-)]
+
       [_
        (raise-syntax-error #f (format "cannot apply non-function type: ~a"
                                       (type->string t))
@@ -606,7 +618,7 @@
    #:with e1 (mk-evar #'x)
    #:with e2 (mk-evar)
    #:with ((x-) body-)
-   (let* ([mrk (ctx-mark (format "~a : ??" (syntax-e #'x)))])
+   (let* ([mrk (ctx-mark (format "~a : ~a" (syntax-e #'x) (type->string #'e1)))])
      (tycheck #'body #'e2 #'([x e1])
               #:before (lambda ()
                          (ctx-cons! (ctx-ev #'e1))
