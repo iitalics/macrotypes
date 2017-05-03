@@ -254,6 +254,8 @@
   )
 
 
+(define +/curry (lambda (x) (lambda (y) (#%app- + x y))))
+
 (provide #%app #%datum lambda (rename-out [lambda λ])
          ann typeof
          (type-out All → Nat Int Num Unit)
@@ -261,7 +263,7 @@
                     [[add1 (→ Int Int)] add1]
                     [[add1 (→ Num Num)] 1+]
                     [[values (All (X) (→ X X))] id]
-                    [[+ (→ Num (→ Num Num))] +]
+                    [[+/curry (→ Num (→ Num Num))] +]
                     ))
 
 
