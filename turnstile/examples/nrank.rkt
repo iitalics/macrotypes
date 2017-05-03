@@ -464,6 +464,10 @@
             (printf "  => ~a\n" sub?)
             sub?))]))]
 
+  ; typecheck that the expression has the given type
+  ; returns a syntax list with the first element containing all of the
+  ; expanded forms of variables, and the second element containing the
+  ; expanded expression
   (define (tycheck expr t
                    [x:ts '()]
                    #:before [before-fn void]
@@ -484,6 +488,28 @@
        #:and (~typecheck [[x ≫ x- : τ] ... ⊢ #,expr ≫ expr- ⇐ T])
        #:do [(after-fn)]
        #'((x- ...) expr-)]))
+
+
+  ; apply a function of the given type to the given expression, synthesizing
+  ; the resulting type. returns a syntax list with the first element containing
+  ; the result type and the second element containig the expanded form of the argument.
+  (define (app⇒⇒ t arg #:src [src arg])
+    (syntax-parse t
+      ; rule: ∀App
+      [(~All (X) A)
+       (let ([ex (mk-evar #'X)])
+         (ctx-cons! (ctx-ev ex))
+         (app⇒⇒ (subst ex #'X #'A) arg #:src src))]
+
+      ; rule: →App
+      [(~→ A C)
+       #:with (() arg-) (tycheck arg #'A)
+       #'(C arg-)]
+
+      [_
+       (raise-syntax-error #f (format "cannot apply non-function type: ~a"
+                                      (type->string t))
+                           src)]))
 
   )
 
@@ -530,7 +556,15 @@
   ; rule: 1I⇒
   [(_) ≫
    --------
-   [⊢ '() ⇒ Unit]])
+   [⊢ '() ⇒ Unit]]
+
+  ; rule: →E
+  [(_ e1 e2) ≫
+   [⊢ e1 ≫ e1- ⇒ A]
+   #:with (C e2-) (app⇒⇒ (subst-from-ctx #'A) #'e2 #:src #'e1)
+   --------
+   [⊢ (#%app- e1- e2-) ⇒ C]])
+
 
 (define-typed-syntax #%datum
   ; rule: 1I⇒ (extended for other datum)
@@ -601,3 +635,9 @@
 ; (ann (λ (x) (λ (y) x)) : (All (X) (→ X (All (Y) (→ Y X)))))
 ; (ann (λ (x) (λ (y) y)) : (All (X) (→ X (All (Y) (→ Y Y)))))
 ; (ann (λ (x) x) : (→ Int Int))
+; (typeof (λ (x) (λ (f) (f x))))
+
+(provide (typed-out [[add1 (→ Nat Nat)] succ]
+                    [[add1 (→ Int Int)] add1]
+                    [[add1 (→ Num Num)] 1+]
+                    [[values (All (X) (→ X X))] id]))
