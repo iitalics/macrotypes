@@ -22,16 +22,16 @@
 (check-type (id 3) : Num)
 
 ; lambdas
-(check-type (lambda (x) x) : (→ Num Num))
-(check-type (lambda (x) x) : (→ Nat Num))
-(check-type (lambda (x) (lambda (y) x)) : (→ Unit (→ Num Unit)))
-(typecheck-fail (ann (lambda (x) (lambda (y) x)) : (→ Unit (→ Num Num))))
+(check-type (λ (x) x) : (→ Num Num))
+(check-type (λ (x) x) : (→ Nat Num))
+(check-type (λ (x) (λ (y) x)) : (→ Unit (→ Num Unit)))
+(typecheck-fail (ann (λ (x) (λ (y) x)) : (→ Unit (→ Num Num))))
 
 ; foralls
 ; (cannot directly check because typechecking needs to
 ;  go through the (tycheck ..) function to work properly)
-(check-type (ann (lambda (x) x) : (All (A) (→ A A)))
+(check-type (ann (λ (x) x) : (All (A) (→ A A)))
             : (All (A) (→ A A)))
 
 ; rank-2 foralls
-(check-type (lambda (f) (f 3)) : (→ (All (X) (→ X X)) Nat))
+(check-type (λ (f) (f 3)) : (→ (All (X) (→ X X)) Nat))

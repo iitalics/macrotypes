@@ -87,19 +87,19 @@
       ; rule: Inst[L/R]Solve
       [τ #:when (and (monotype? #'τ)
                      (well-formed?/list #'τ (get-before ctx (ctx-ev/c e))))
-         (call-between ctx (ctx-ev/c e)
-                       (lambda ()
-                         (ctx-cons! (e . ctx-ev= . #'τ) ctx)
-                         #t))]
+         (ctx-call-between ctx (ctx-ev/c e)
+                           (lambda ()
+                             (ctx-cons! (e . ctx-ev= . #'τ) ctx)
+                             #t))]
 
       ; rule: Inst[L/R]Reach
       [(~and e2 (~Evar _))
        (and (memf (ctx-ev/c #'e2)
                   (get-after ctx (ctx-ev/c e)))
-            (call-between ctx (ctx-ev/c #'e2)
-                          (lambda ()
-                            (ctx-cons! (#'e2 . ctx-ev= . e) ctx)
-                            #t)))]
+            (ctx-call-between ctx (ctx-ev/c #'e2)
+                              (lambda ()
+                                (ctx-cons! (#'e2 . ctx-ev= . e) ctx)
+                                #t)))]
 
       ; rule: Inst[L/R]Arr
       [(~→ A1 A2)
@@ -108,11 +108,11 @@
               [e2 (mk-evar e)]
               [e1->e2 ((current-type-eval) #`(→ #,e1 #,e2))]
               [dir- (case dir [(<:) ':>] [(:>) '<:])])
-         (call-between ctx (ctx-ev/c e)
-                       (lambda ()
-                         (ctx-cons! (ctx-ev e2) ctx)
-                         (ctx-cons! (ctx-ev e1) ctx)
-                         (ctx-cons! (e . ctx-ev= . e1->e2) ctx)))
+         (ctx-call-between ctx (ctx-ev/c e)
+                           (lambda ()
+                             (ctx-cons! (ctx-ev e2) ctx)
+                             (ctx-cons! (ctx-ev e1) ctx)
+                             (ctx-cons! (e . ctx-ev= . e1->e2) ctx)))
          (or (and (inst-evar e1 dir- #'A1)
                   (inst-evar e2 dir  (subst-from-ctx #'A2 ctx)))
              (begin (set-box! ctx tmp)
@@ -238,7 +238,7 @@
        #:with e1 (mk-evar #'arg)
        #:with e2 (mk-evar #'ret)
        #:with e1->e2 ((current-type-eval) #'(→ e1 e2))
-       #:do [(call-between (current-ctx) (ctx-ev/c #'e)
+       #:do [(ctx-call-between (current-ctx) (ctx-ev/c #'e)
                            (lambda _
                              (ctx-cons! (ctx-ev #'e2))
                              (ctx-cons! (ctx-ev #'e1))

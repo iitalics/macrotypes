@@ -54,7 +54,7 @@
 ; calls fn such that any affects to ctx will be applied
 ; in the space instead of the first found element that
 ; matches predicate 'p'.
-(define (call-between ctx p fn)
+(define (ctx-call-between ctx p fn)
   (let-values ([(a b) (splitf-at (unbox ctx)
                                  (negate p))])
     (set-box! ctx (cdr b))
