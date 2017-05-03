@@ -3,6 +3,11 @@
          (for-syntax racket
                      "nrank-context.rkt"))
 
+(provide (for-syntax monotype?
+                     well-formed?
+                     inst-evar
+                     subtype))
+
 ; fundamental types
 (define-base-types Unit Num Int Nat)
 (define-type-constructor → #:arity = 2)

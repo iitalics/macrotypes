@@ -1,6 +1,11 @@
 #lang racket
 (require (only-in "../nrank.rkt"
-                  → Unit Int Nat Num)
+                  All → Unit Int Nat Num
+                  ~All ~→ ~Unit ~Int ~Nat ~Num
+                  monotype?
+                  well-formed?
+                  inst-evar
+                  subtype)
          (for-syntax rackunit
                      "../nrank-context.rkt")
          turnstile
@@ -46,6 +51,18 @@
     (check-equal? (unbox ctx) (list (ctx-ev e2)))
     (check-equal? (ctx-pop-until! (lambda _ #f) ctx)           (list (ctx-ev e2)))
     (check-equal? (unbox ctx) '()))
+
+  ; ctx-call-between
+  (let* ([mrk1 (ctx-mark 'm1)] [mrk2 (ctx-mark 'm2)]
+         [mrk3 (ctx-mark 'm3)] [mrk4 (ctx-mark 'm4)]
+         [ctx (mk-ctx* mrk1 mrk3 mrk4)])
+    (ctx-call-between ctx (ctx-mark/c mrk3)
+                      (lambda _
+                        (check-equal? (unbox ctx)
+                                      (list mrk4))
+                        (ctx-cons! mrk2 ctx)))
+    (check-equal? (unbox ctx)
+                  (list mrk1 mrk2 mrk4)))
 
   ; subst-from-ctx
   (let* ([e1 (mk-evar)] [e2 (mk-evar)]
