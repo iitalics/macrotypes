@@ -1,6 +1,7 @@
 #lang turnstile/lang
-(require (for-syntax racket
-                     rackunit))
+(require "nrank-evar.rkt"
+         (for-syntax racket
+                     "nrank-context.rkt"))
 
 ; fundamental types
 (define-base-types Unit Num Int Nat)
@@ -8,25 +9,7 @@
 (define-binding-type All #:arity = 1 #:bvs = 1)
 
 (begin-for-syntax
-  ; a monotype is a type without quantifications (foralls)
-  (define (monotype? t)
-    (syntax-parse t
-      [(~All (X) _) #f]
-      [(~→ T1 T2) (and (monotype? #'T1)
-                       (monotype? #'T2))]
-      [_ #t]))
-
-  (check-true (monotype? ((current-type-eval) #'Unit)))
-  (check-true (monotype? ((current-type-eval) #'(→ Int Nat))))
-  (check-false (monotype? ((current-type-eval) #'(→ (All (X) X) Nat))))
-
-  )
-
-; the one "argument" to an Evar is a mk-type'd quoted symbol
-; used to differentiate them
-(define-type-constructor Evar #:arity = 1)
-
-(begin-for-syntax
+  ; string representation of the given type
   (define (type->string t)
     (syntax-parse t
       [~Unit "Unit"]
@@ -43,168 +26,14 @@
                                             (syntax-e #'s))]
       [x:id (symbol->string (syntax-e #'x))]))
 
-  ; generates a new evar
-  (define (mk-evar [src #f])
-    (define uniq-sym (gensym (syntax-parse src
-                               [(~Evar (_ s)) (substring (symbol->string (syntax-e #'s))
-                                                         0 3)]
-                               [x:id (syntax-e #'x)]
-                               [_ 'E])))
-    (with-syntax ([quot-sym (mk-type #`(quote #,uniq-sym))])
-      ((current-type-eval) #'(Evar quot-sym))))
 
-  ; returns #t if both types are the same evars
-  (define (Evar=? t1 t2)
-    (syntax-parse (list t1 t2)
-      [((~Evar ((~literal quote) s1))
-        (~Evar ((~literal quote) s2)))
-       (symbol=? (syntax-e #'s1)
-                 (syntax-e #'s2))]
-      [_ #f]))
-
-  (let* ([e1 (mk-evar)]
-         [e2 (mk-evar)]
-         [T ((current-type-eval) #'Unit)])
-    (check-false (Evar=? T e1))
-    (check-false (Evar=? e2 T))
-    (check-false (Evar=? e1 e2))
-    (check-not-false (Evar=? e1 e1))
-    (check-not-false (Evar=? e1 ((current-type-eval) e1))))
-
-  ; substitute evar e -> U in T
-  (define (evar-subst e U T)
-    (syntax-parse T
-      [(~and e2 (~Evar _))
-       #:when (Evar=? e #'e2)
-       (transfer-stx-props U (merge-type-tags (syntax-track-origin U T #'evar-subst)))]
-      [(~→ T1 T2)
-       #:with T1- (evar-subst e U #'T1)
-       #:with T2- (evar-subst e U #'T2)
-       ((current-type-eval) #'(→ T1- T2-))]
-      [(~All (X) T1)
-       #:with T1- (evar-subst e U #'T1)
-       ((current-type-eval) #'(All (X) T1-))]
-      [_ T]))
-
-  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
-         [Un ((current-type-eval) #'Unit)]
-         [T1 ((current-type-eval) #`(→ #,e1 Unit))]
-         [T2 ((current-type-eval) #`(→ Unit #,e2))]
-         [U->U ((current-type-eval) #'(→ Unit Unit))])
-    (check-equal? (syntax->datum (evar-subst e1 Un T1))
-                  (syntax->datum U->U))
-    (check-equal? (syntax->datum (evar-subst e1 Un T2))
-                  (syntax->datum T2))
-    (check-equal? (syntax->datum (evar-subst ((current-type-eval) e2) Un T2))
-                  (syntax->datum U->U)))
-
-
-  ; a ContextElem (ce) is one of:
-  ;  (ctx-tv id)       (identifier? id)
-  ;  (ctx-ev ev)       (Evar? ev)
-  ;  (ctx-ev= ev ty)   (and (Evar? ev) (type? ty))
-  ;  (ctx-mark)
-
-  ; This roughly corresponds to the Γ definition in the paper,
-  ; with the difference that the "x:A" and "▹a" forms are condenced
-  ; into just (ctx-mark), where eq? is used to find the specific mark
-
-  (struct ctx-tv (id) #:transparent)
-  (struct ctx-ev (ev) #:transparent)
-  (struct ctx-ev= (ev ty) #:transparent)
-  (struct ctx-mark (desc))
-
-  ; contract for ctx-tv's that contain the same bound identifier
-  (define (ctx-tv/c id)
-    (match-lambda
-      [(ctx-tv id2) (type=? id id2)]
-      [_ #f]))
-
-  ; contract for ctx-ev's that contain the same Evar
-  (define (ctx-ev/c ev)
-    (match-lambda
-      [(ctx-ev ev2) (Evar=? ev ev2)]
-      [_ #f]))
-
-  ; contract for picking specific ctx-mark's
-  (define (ctx-mark/c cm)
-    (lambda (c) (eq? c cm)))
-
-
-  ; a Context (ctx) is a (box l/ce) where l/ce is a list of ContextElem's
-
-  (define (display-ctx ctx [mrk #f])
-    (for ([ce (in-list (unbox ctx))])
-      (match ce
-        [(ctx-ev e)    (printf "ev: ~a\n" (type->string e))]
-        [(ctx-ev= e t) (printf "ev: ~a = ~a\n" (type->string e) (type->string t))]
-        [(ctx-tv v)    (printf "tv: ~a\n" (syntax-e v))]
-        [(ctx-mark d)  (if (eq? ce mrk)
-                           (printf "*mark ~a\n" d)
-                           (printf "mark ~a\n" d))]))
-    (printf ";\n"))
-
-
-  ; current computed context
-  (define current-ctx (make-parameter (box '())))
-
-  ; context utility functions
-  (define (mk-ctx* . lst) (box lst))
-  (define (ctx-find p [ctx (current-ctx)])
-    (findf p (unbox ctx)))
-  (define (ctx-cons ce [ctx (current-ctx)])
-    (box (cons ce (unbox ctx))))
-  (define (ctx-cons! ce [ctx (current-ctx)])
-    (set-box! ctx (cons ce (unbox ctx))))
-  (define (ctx-append! ces [ctx (current-ctx)])
-    (set-box! ctx (append ces (unbox ctx))))
-
-
-  ; removes elements from the given context until it finds one that
-  ; matches the given predicate (which it removes as well). returns
-  ; the list of elements popped, excluding the element that matched
-  ; the predicate.
-  (define (ctx-pop-until! p [ctx (current-ctx)])
-    (let trav ([lst (unbox ctx)] [acc '()])
-      (match lst
-        ['()
-         (set-box! ctx '()) acc]
-        [(cons (? p) rst)
-         (set-box! ctx rst) (reverse acc)]
-        [(cons elem rst)
-         (trav rst (cons elem acc))])))
-
-  (let* ([mrk1 (ctx-mark 'm1)] [mrk2 (ctx-mark 'm2)] [e1 (mk-evar)] [e2 (mk-evar)]
-         [ctx (mk-ctx* mrk1
-                       (ctx-ev e1)
-                       mrk2
-                       (ctx-ev e2))])
-    (check-equal? (ctx-pop-until! (ctx-mark/c mrk2) ctx)  (list mrk1 (ctx-ev e1)))
-    (check-equal? (unbox ctx) (list (ctx-ev e2)))
-    (check-equal? (ctx-pop-until! (lambda _ #f) ctx)           (list (ctx-ev e2)))
-    (check-equal? (unbox ctx) '()))
-
-
-  ; applies all ctx-ev= substitutions in the context to the given type.
-  (define (subst-from-ctx T [ctx (current-ctx)])
-    (let trav ([t T] [lst (unbox ctx)])
-      (match lst
-        ['() t]
-        [(cons (ctx-ev= e u) rst)
-         (trav (evar-subst e u t) rst)]
-        [(cons _ rst)
-         (trav t rst)])))
-
-  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
-         [Int ((current-type-eval) #'Int)]
-         [T1 ((current-type-eval) #`(→ #,e1 (→ #,e2 Nat)))]
-         [T2 ((current-type-eval) #`(→ Int (→ Int Nat)))])
-    (check-equal? (syntax->datum (subst-from-ctx T1
-                                                 (mk-ctx* (ctx-mark 'm1)
-                                                          (e2 . ctx-ev= . e1)
-                                                          (ctx-ev e2)
-                                                          (e1 . ctx-ev= . Int))))
-                  (syntax->datum T2)))
+  ; a monotype is a type without quantifications (foralls)
+  (define (monotype? t)
+    (syntax-parse t
+      [(~All (X) _) #f]
+      [(~→ T1 T2) (and (monotype? #'T1)
+                       (monotype? #'T2))]
+      [_ #t]))
 
 
   ; is the given type well formed under the context?
@@ -229,38 +58,6 @@
       [(~All (X) T)
        (well-formed?/list #'T (cons (ctx-tv #'X) ctxl))]
       [_ #t]))
-
-  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
-         [Nat ((current-type-eval) #'Nat)]
-         [T1 ((current-type-eval) #`(→ #,e1 Unit))]
-         [T2 ((current-type-eval) #`(→ Nat #,e2))])
-    (check-not-false (well-formed? T1 (mk-ctx* (ctx-ev e1))))
-    (check-false     (well-formed? T2 (mk-ctx* (ctx-ev e1))))
-    (check-not-false (well-formed? T2 (mk-ctx* (ctx-ev= e2 Nat))))
-    (syntax-parse ((current-type-eval) #'(All (X) (→ X Unit)))
-      [(~All (Y) T)
-       (check-false     (well-formed? #'T (mk-ctx*)))
-       (check-not-false (well-formed? #'T (mk-ctx* (ctx-tv #'Y))))]))
-
-
-  ; calls fn such that any affects to ctx will be applied
-  ; in the space instead of the first found element that
-  ; matches predicate 'p'.
-  (define (call-between ctx p fn)
-    (let-values ([(a b) (splitf-at (unbox ctx)
-                                   (negate p))])
-      (set-box! ctx (cdr b))
-      (begin0 (fn)
-        (ctx-append! a ctx))))
-
-  ; get parts of a context before/after the first (latest) element that
-  ; maches the given predicate
-  (define (get-before ctx p)
-    (match (dropf (unbox ctx) (negate p))
-      [(cons _ xs) xs]
-      [_ '()]))
-  (define (get-after ctx p)
-    (takef (unbox ctx) (negate p)))
 
 
   ; instantiation algorithm. instantiate evar 'e' to be type 't' under
@@ -289,7 +86,7 @@
 
       ; rule: Inst[L/R]Solve
       [τ #:when (and (monotype? #'τ)
-                   (well-formed?/list #'τ (get-before ctx (ctx-ev/c e))))
+                     (well-formed?/list #'τ (get-before ctx (ctx-ev/c e))))
          (call-between ctx (ctx-ev/c e)
                        (lambda ()
                          (ctx-cons! (e . ctx-ev= . #'τ) ctx)
@@ -323,58 +120,21 @@
 
       [_ #f]))
 
-  (let* ([e1 (mk-evar)] [e2 (mk-evar)]
-         [init-ctx (lambda _ (mk-ctx* (ctx-ev e2) (ctx-ev e1)))]
-         [s->d syntax->datum]
-         [T1 ((current-type-eval) #`(→ #,e1 Unit))]
-         [T2 ((current-type-eval) #`(→ #,e2 Unit))]
-         [T3 ((current-type-eval) #`(All (X) X))])
-    ; easy to inst because e1 appears before e2
-    (parameterize ([current-ctx (init-ctx)])
-      (check-not-false (inst-evar e2 '<: T1))
-      (check-equal? (unbox (current-ctx))
-                    (list (e2 . ctx-ev= . T1)
-                          (ctx-ev e1))))
-    ; more difficult to inst before e2 appears after e1
-    (parameterize ([current-ctx (init-ctx)])
-      (check-not-false (inst-evar e1 '<: T2))
-      (match (unbox (current-ctx))
-        [(list (ctx-ev= t1 t2) (ctx-ev= t3 t4) (ctx-ev e3) (ctx-ev= e4 t5))
-         (check-equal? (s->d t1) (s->d e2))
-         (check-equal? (s->d t2) (s->d e3))
-         (check-equal? (s->d t3) (s->d e1))
-         (check-equal? (s->d t4) (s->d ((current-type-eval) #`(→ #,e3 #,e4))))
-         (check-equal? (s->d t5) (s->d ((current-type-eval) #'Unit)))]
-        [_ (fail "context has wrong form")]))
-    ; inst with foralls
-    (parameterize ([current-ctx (init-ctx)])
-      (check-false (inst-evar e1 '<: T3))
-      (check-equal? (unbox (current-ctx))
-                    (list (ctx-ev e2) (ctx-ev e1)))
-      (check-not-false (inst-evar e1 ':> T3))
-      (check-equal? (unbox (current-ctx))
-                    (list (ctx-ev e2) (ctx-ev e1)))))
-
 
   ; subtype algorithm. returns #t and modifies the context
   ; if t1 can be made to subtype t2 (t1 <: t2). returns #f
   ; otherwise
   (define (subtype t1 t2 [ctx (current-ctx)])
     (syntax-parse (list t1 t2)
-      ; rule: <:Unit (plus some new types)
-      [(~or (~Unit ~Unit)
-            (~Int  ~Int)
-            (~Nat  ~Nat)
-            (~Num  ~Num)
+      [(x y)
+       #:when (type=? #'x #'y)
+       #t]
 
-            (~Nat  ~Int)
+      ; rule: <:Unit (plus some new types)
+      [(~or (~Nat  ~Int)
             (~Int  ~Num)
             (~Nat  ~Num))
        #t]
-
-      ; rule: <:Var
-      [(x:id y:id)
-       (type=? #'x #'y)]
 
       ; rule: <:Exvar
       [(~and (e1 e2) ((~Evar _) (~Evar _)))
@@ -410,58 +170,13 @@
       ; rule: <:InstantiateL
       [((~and (~Evar _) e) A)
        (inst-evar #'e '<: #'A ctx)]
+
       ; rule: <:InstantiateR
       [(A (~and (~Evar _) e))
        (inst-evar #'e ':> #'A ctx)]
 
       [_ #f]))
 
-  (parameterize ([current-ctx (mk-ctx*)])
-    (let ([Int ((current-type-eval) #'Int)]
-          [Nat ((current-type-eval) #'Nat)]
-          [Unit ((current-type-eval) #'Unit)]
-          [I->I ((current-type-eval) #'(→ Int Int))]
-          [I->N ((current-type-eval) #'(→ Int Nat))]
-          [N->I ((current-type-eval) #'(→ Nat Int))]
-          [∀X.X ((current-type-eval) #'(All (X) X))])
-      ; basic types
-      (check-not-false (subtype Int Int))
-      (check-not-false (subtype Nat Int))
-      (check-false     (subtype Int Nat))
-      (check-false     (subtype Int Unit))
-      ; function type (variance!)
-      (check-not-false (subtype I->I I->I))
-      (check-not-false (subtype I->N I->I))
-      (check-not-false (subtype I->I N->I))
-      (check-false     (subtype N->I I->I))
-      ; foralls
-      (check-false     (subtype Int ∀X.X))
-      (check-not-false (subtype ∀X.X Int))
-      (check-equal? (unbox (current-ctx)) '())
-      (check-not-false (subtype Nat ((current-type-eval) #'(All (X) Int))))
-      (check-not-false (subtype ∀X.X ((current-type-eval) #'(All (Y) Y))))
-      (check-equal? (unbox (current-ctx)) '())
-      ; ???
-      (check-not-false (subtype ((current-type-eval) #'(All (X) (All (Y) (→ X (→ Y X)))))
-                                ((current-type-eval) #'(All (X) (All (Y) (→ X (→ Y X)))))))
-      ))
-
-  [current-typecheck-relation
-   (λ (t1 t2)
-     (cond
-       ; for some reason turnstile keeps calling this with the same two arguments
-       [(eq? t1 t2) #t]
-       [else
-        ; rule: Sub
-        (let* ([t1- (subst-from-ctx t1)]
-               [t2- (subst-from-ctx t2)])
-          (printf "typecheck: ~a <: ~a\n"
-                  (type->string t1-)
-                  (type->string t2-))
-          (display-ctx (current-ctx))
-          (let ([sub? (subtype t1- t2-)])
-            (printf "  => ~a\n" sub?)
-            sub?))]))]
 
   ; typecheck that the expression has the given type
   ; returns a syntax list with the first element containing all of the
@@ -481,12 +196,25 @@
        #:do [(ctx-pop-until! (ctx-tv/c #'X))]
        #'((x- ...) expr-)]
 
-      [(~and T ~!)
+      [T ; do typechecking
        #:with ([x τ] ...) x:ts
        #:do [(before-fn)]
        #:and (~typecheck [[x ≫ x- : τ] ... ⊢ #,expr ≫ expr- ⇐ T])
        #:do [(after-fn)]
        #'((x- ...) expr-)]))
+
+
+  ; override the typecheck relation to use contexts
+  [current-typecheck-relation
+   (λ (t1 t2)
+     (cond
+       ; for some reason turnstile keeps calling this with identical arguments
+       [(eq? t1 t2) #t]
+       [else
+        ; rule: Sub
+        (let* ([t1- (subst-from-ctx t1)]
+               [t2- (subst-from-ctx t2)])
+          (subtype t1- t2-))]))]
 
 
   ; apply a function of the given type to the given expression, synthesizing
@@ -526,13 +254,16 @@
   )
 
 
-(provide #%app
-         #%datum
-         ann
-         typeof
-         lambda (rename-out [lambda λ])
+(provide #%app #%datum lambda (rename-out [lambda λ])
+         ann typeof
          (type-out All → Nat Int Num Unit)
-         )
+         (typed-out [[add1 (→ Nat Nat)] succ]
+                    [[add1 (→ Int Int)] add1]
+                    [[add1 (→ Num Num)] 1+]
+                    [[values (All (X) (→ X X))] id]
+                    [[+ (→ Num (→ Num Num))] +]
+                    ))
+
 
 ; prints the type of an expression
 (define-typed-syntax typeof
@@ -552,13 +283,13 @@
    [⊢ e- ⇒ T]])
 
 (define-typed-syntax #%app
-  ; sugary ann syntax
+  ;; sugary ann syntax
   [{_ e (~datum :) hint} ≫
    #:when (equal? #\{ (syntax-property this-syntax 'paren-shape))
    --------
    [≻ (ann e : hint)]]
 
-  ; this is actually unit syntax
+  ;; unit syntax
   ; rule: 1I
   [(_) ⇐ u ≫
    #:when (Unit? #'u)
@@ -570,12 +301,18 @@
    --------
    [⊢ '() ⇒ Unit]]
 
+  ;; application syntax
   ; rule: →E
   [(_ e1 e2) ≫
    [⊢ e1 ≫ e1- ⇒ A]
    #:with (C e2-) (app⇒⇒ (subst-from-ctx #'A) #'e2 #:src #'e1)
    --------
-   [⊢ (#%app- e1- e2-) ⇒ C]])
+   [⊢ (#%app- e1- e2-) ⇒ C]]
+
+  ;; sugary application syntax
+  [(_ e1 e2 ... e3) ≫
+   --------
+   [≻ (#%app (#%app e1 e2 ...) e3)]])
 
 
 (define-typed-syntax #%datum
@@ -630,7 +367,19 @@
    [⊢ (lambda- (x-) body-) ⇒ (→ e1 e2)]])
 
 
+(define-for-syntax (display-ctx ctx [mrk #f])
+  (for ([ce (in-list (unbox ctx))])
+    (match ce
+      [(ctx-ev e)    (printf "ev: ~a\n" (type->string e))]
+      [(ctx-ev= e t) (printf "ev: ~a = ~a\n" (type->string e) (type->string t))]
+      [(ctx-tv v)    (printf "tv: ~a\n" (syntax-e v))]
+      [(ctx-mark d)  (if (eq? ce mrk)
+                         (printf "*mark ~a\n" d)
+                         (printf "mark ~a\n" d))]))
+  (printf ";\n"))
+
 (provide print-ctx reset-ctx)
+
 (define-typed-syntax print-ctx
   [_ ≫
    #:do [(display-ctx (current-ctx))]
@@ -642,14 +391,3 @@
    #:do [(set-box! (current-ctx) '())]
    ---------
    [⊢ (#%app- void) ⇒ Unit]])
-
-; (ann (λ (x) (λ (y) x)) : (All (X) (All (Y) (→ X (→ Y X)))))
-; (ann (λ (x) (λ (y) x)) : (All (X) (→ X (All (Y) (→ Y X)))))
-; (ann (λ (x) (λ (y) y)) : (All (X) (→ X (All (Y) (→ Y Y)))))
-; (ann (λ (x) x) : (→ Int Int))
-; (typeof (λ (x) (λ (f) (f x))))
-
-(provide (typed-out [[add1 (→ Nat Nat)] succ]
-                    [[add1 (→ Int Int)] add1]
-                    [[add1 (→ Num Num)] 1+]
-                    [[values (All (X) (→ X X))] id]))
