@@ -30,7 +30,7 @@
                     [add1 : (→ Int Int)]
                     [sub1 : (→ Int Int)])
          #%datum #%app
-         (for-syntax ~True ~False))
+         (for-syntax ~PosInt ~Zero ~NegInt ~True ~False))
 
 (define-syntax define-named-type-alias
   (syntax-parser
@@ -58,8 +58,8 @@
      #:with ((~or (~U* ty1- ...) ty2-) ...) (stx-map (current-type-eval) #'tys)
      #:with tys- (prune+sort #'(ty1- ... ... ty2- ...))
      (if (= 1 (stx-length #'tys-))
-         (stx-car #'tys)
-         #'(U* . tys-))]))
+         (stx-car #'tys-)
+         (syntax/loc stx (U* . tys-)))]))
 (define-syntax Bool
   (make-variable-like-transformer
    (add-orig #'(U False True) #'Bool)))
