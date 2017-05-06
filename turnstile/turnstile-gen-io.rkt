@@ -70,14 +70,17 @@
     (pattern (~seq :⇒ expr)
              #:with key (default-output-key)))
 
+
   (define-splicing-syntax-class ellipses
-    (pattern (~seq (~literal ...)))
-    (pattern (~seq)))
+    (pattern (~seq (~literal ...))
+             #:with repeat? #t)
+    (pattern (~seq)
+             #:with repeat? #f))
+
 
 
   (define-syntax-class tych-rule
-    (pattern [expr-patn in:tag⇐ ...
-                        :≫
+    (pattern [expr-patn in:tag⇐ ... :≫
                         premise:tych-premise ...
                         :----
                         concl:tych-conclusion]
@@ -87,36 +90,71 @@
                                                 '(in.key ...))
                 concl.pre ...
                 premise.norm ... ...
+                concl.post ...
                 (parameterize ([current-rule-input-keys '(in.key ...)])
                   concl.result)]))
 
+
+
   (define-splicing-syntax-class tych-premise
+    ; syntax-parse directive premise
     (pattern dir:stxparse-dir
-             #:with [norm ...] #'dir))
+             #:with [norm ...] #'dir)
+
+    ; premise with expression and tags
+    (pattern (~seq [:⊢ template :≫ pattern
+                       in:tag⇐ ...
+                       out:tag⇒ ...] ooo:ellipses)
+             #:do [(printf "premise repeat? ~a\n"
+                           (attribute ooo.repeat?))]
+             #:with e+ (generate-temporary #'prem+tags)
+             #:with e- (generate-temporary #'prem-infer)
+             #:with [norm ...]
+             #'[#:with e+
+                (put-props #`template
+                           '(in.key ...)
+                           (list #`in.expr ...))
+                #:with (_ _ (e-) _) (infer (list #'e+))
+                #:with (out.expr ...) (get-props #'e-
+                                                 '(out.key ...))]))
+
+
 
   (define-syntax-class tych-conclusion
+    ; conclusion extends
     (pattern [:≻ template]
              #:with [pre ...] #'[]
+             #:with [post ...] #'[]
+             #:with keys-expr (if (expected-output-list-key)
+                                  #`(cons '#,(expected-output-list-key)
+                                          (current-rule-input-keys))
+                                  #`(current-rule-input-keys))
              #:with result
              #'(transfer-props #`template
                                this-syntax
-                               (current-rule-input-keys)))
+                               keys-expr))
 
+    ; conclusion outputs
     (pattern [:⊢ template
                  out:tag⇒ ...]
              #:with [pre ...]
-             (cond
-               [(expected-output-list-key)
-                #`[#:when (set=? (or (syntax-property this-syntax
-                                                      '#,(expected-output-list-key))
-                                     '())
-                                 '(out.key ...))]]
-               [else
-                #'[]])
+             (if (expected-output-list-key)
+                 #`[#:when (set=? (or (syntax-property this-syntax
+                                                       '#,(expected-output-list-key))
+                                      '())
+                                  '(out.key ...))]
+                 #'[])
+             #:with [post ...] #'[]
+             #:with result #'(put-props #`template
+                                        '(out.key ...)
+                                        (list #`out.expr ...)))
+
+    ; conclusion errors
+    (pattern [#:error err-msg]
+             #:with [pre ...] #'[]
+             #:with [post ...] #'[#:fail-unless #f err-msg]
              #:with result
-             #'(put-props #`template
-                          '(out.key ...)
-                          (list #`out.expr ...))))
+             #'(raise-syntax-error #f err-msg this-syntax)))
 
   )
 
@@ -153,22 +191,16 @@
          option ...
          rule.norm ...)]))
 
+(define-syntax define-typed-syntax
+  (syntax-parser
+    [(_ name:id . r)
+     #'(define-syntax (name stx)
+         (syntax-parse/typecheck stx . r))]
 
+    [(_ (name . pats) :≫ . r)
+     #'(define-typed-syntax name
+         [(_ . pats) :≫ . r])]))
 
-
-(begin-for-syntax
-  [expected-output-list-key #f])
-
-(syntax-parse/typecheck
- #'foo
-  [pat (⇐ i _) ≫
-      #:with out #'bar
-      --------
-      [⊢ out (⇒ y 3)]]
-
- [pat ≫
-  --------
-  [⊢ sadness]])
 
 
 
