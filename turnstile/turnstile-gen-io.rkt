@@ -56,6 +56,9 @@
   (define default-output-key
     (make-parameter ':))
 
+  (define expected-output-list-key
+    (make-parameter '#%expected-outputs))
+
   (define-splicing-syntax-class key⇐
     (pattern (~seq :⇐ expr)
              #:with key (default-input-key))
@@ -71,7 +74,6 @@
     (pattern (~seq)))
 
 
-
   (define-syntax-class tych-rule
     (pattern [expr-patn in:key⇐ ...
                         :≫
@@ -80,30 +82,62 @@
                         concl:tych-conclusion]
              #:with norm
              #'[expr-patn
-                #:with (in.expr ...) (prop/inputs this-syntax
-                                                  `(in.key ...))
+                #:with (in.expr ...) (get-props this-syntax
+                                                '(in.key ...))
                 concl.pre ...
                 premise.norm ... ...
-                concl.result]))
-
+                (parameterize ([current-rule-input-keys '(in.key ...)])
+                  concl.result)]))
 
   (define-splicing-syntax-class tych-premise
     (pattern dir:stxparse-dir
              #:with [norm ...] #'dir))
 
   (define-syntax-class tych-conclusion
-    (pattern [:≻ expr]
-             #:with (pre ...) #'()
-             #:with result #'#`expr))
+    (pattern [:≻ template]
+             #:with [pre ...] #'[]
+             #:with result
+             #'(transfer-props #`template
+                               this-syntax
+                               (current-rule-input-keys)))
+
+    (pattern [:⊢ template
+                 out:key⇒ ...]
+             #:with exp-out-list-key (expected-output-list-key)
+             #:with [pre ...]
+             #'[#:when (set=? (or (syntax-property this-syntax
+                                                   'exp-out-list-key)
+                                  '())
+                              '(out.key ...))]
+             #:with result
+             #'(put-props #`template
+                          '(out.key ...)
+                          (list #`out.expr ...))))
 
   )
 
 
-(define (prop/inputs stx keys)
+
+; phase 0 utilities
+
+(define current-rule-input-keys
+  (make-parameter '()))
+
+(define (get-props stx keys)
   (let/ec break
     (for/list ([key (in-list keys)])
       (or (syntax-property stx key)
           (break #f)))))
+
+(define (put-props stx keys vals)
+  (foldl (lambda (k v s)
+           (syntax-property s k v))
+         stx keys vals))
+
+(define (transfer-props dst src keys)
+  (put-props dst keys (get-props src keys)))
+
+
 
 
 (define-syntax syntax-parse/typecheck
@@ -116,12 +150,13 @@
          rule.norm ...)]))
 
 (syntax-parse/typecheck
- 'foo
- [pat ≫
-  #:with out #'bar
-  --------
-  [≻ out]])
-
+ (put-props #'foo
+            '(i   #%expected-outputs)
+            '(4   (y)))
+ [pat (⇐ i _) ≫
+      #:with out #'bar
+      --------
+      [⊢ out (⇒ y 3)]])
 
 
 
