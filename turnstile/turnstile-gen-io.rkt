@@ -40,6 +40,14 @@
                          argument)
                    ...)))
 
+  (define-splicing-syntax-class stxparse-dir
+    (pattern (~or (~seq (~or #:with #:when
+                             #:and #:post
+                             #:attr #:do)
+                        argument)
+                  (~seq (~or #:fail-when #:fail-unless)
+                        argument expression))))
+
 
 
 
@@ -79,20 +87,18 @@
                                                   `(in.key ...))
                 concl.pre ...
                 premise.norm ... ...
-                concl.result ...]))
+                concl.result]))
 
 
   (define-splicing-syntax-class tych-premise
-    (pattern e
-             #:with (norm ...)
-             #'(#:do [(printf "premise => ~v\n"
-                              (syntax->datum #`e))])))
+    (pattern dir:stxparse-dir
+             #:do [(printf "stxparse-dir premise: ~a\n"
+                           (syntax->datum #'dir))]
+             #:with (norm ...) #'dir))
 
-  (define-splicing-syntax-class tych-conclusion
-    (pattern _
-             #:with (pre ...) #'()
-             #:with (result ...) #'[(raise-syntax-error #f "conclusion unimpl."
-                                                        this-syntax)]))
+  (define-syntax-class tych-conclusion
+    (pattern [:≻ result]
+             #:with (pre ...) #'()))
 
   )
 
@@ -113,13 +119,10 @@
          rule.norm ...)]))
 
 (syntax-parse/typecheck
- ;(syntax-property #'foo  'g "gee")
- #'foo
- [pat
-  (⇐ g g-val) ≫
-  g-val
+ 'foo
+ [pat ≫
   --------
-  conclusion])
+  [≻ 'bar]])
 
 
 
