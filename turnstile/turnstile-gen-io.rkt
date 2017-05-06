@@ -1,13 +1,49 @@
 #lang racket
-(require macrotypes/typecheck
-         syntax/parse
-         (for-syntax racket/base
-                     syntax/parse)
-         (for-template syntax/parse))
 
-(provide syntax-parse/typecheck)
 
-(begin-for-syntax
+
+(module stx-prop-utils racket/base
+  (provide (all-defined-out))
+
+  (define (get-props stx keys)
+    (let/ec break
+      (for/list ([key (in-list keys)])
+        (or (syntax-property stx key)
+            (break #f)))))
+
+  (define (put-props stx keys vals)
+    (foldl (lambda (k v s)
+             (syntax-property s k v))
+           stx keys vals))
+
+  (define (transfer-props dst src keys)
+    (put-props dst keys (get-props src keys)))
+  )
+
+
+(module phase1-params racket/base
+  (provide (all-defined-out))
+
+  ; default keys when using `⇒ templ' syntax
+  ; instead of specifying with `(⇒ key templ)'
+  (define default-input-key
+    (make-parameter 'expected-type))
+  (define default-output-key
+    (make-parameter ':))
+
+  ; #f to not require rules to match expected outputs
+  (define expected-output-list-key
+    (make-parameter '#%expected-outputs))
+  )
+
+
+(module syntax-classes racket/base
+  (require syntax/parse
+           racket/syntax
+           macrotypes/typecheck
+           (for-meta 0 (submod ".." phase1-params))
+           (for-meta -1 (submod ".." stx-prop-utils)))
+  (provide (all-defined-out))
 
   ; TODO: non-unicode alternatives (#:keywords?)
   (define-syntax-class ⇐
@@ -50,16 +86,6 @@
 
 
 
-  (define default-input-key
-    (make-parameter 'expected-type))
-
-  (define default-output-key
-    (make-parameter ':))
-
-  ; #f to not require rules to match expected outputs
-  (define expected-output-list-key
-    (make-parameter '#%expected-outputs))
-
   (define-splicing-syntax-class tag⇐
     (pattern (:⇐ key expr))
     (pattern (~seq :⇐ expr)
@@ -78,6 +104,9 @@
              #:with repeat? #f))
 
 
+
+  (define current-rule-input-keys
+    (make-parameter '()))
 
   (define-syntax-class tych-rule
     (pattern [expr-patn in:tag⇐ ... :≫
@@ -158,29 +187,9 @@
 
   )
 
-
-
-; phase 0 utilities
-
-(define current-rule-input-keys
-  (make-parameter '()))
-
-(define (get-props stx keys)
-  (let/ec break
-    (for/list ([key (in-list keys)])
-      (or (syntax-property stx key)
-          (break #f)))))
-
-(define (put-props stx keys vals)
-  (foldl (lambda (k v s)
-           (syntax-property s k v))
-         stx keys vals))
-
-(define (transfer-props dst src keys)
-  (put-props dst keys (get-props src keys)))
-
-
-
+(require (for-meta 1
+                   'syntax-classes
+                   syntax/parse))
 
 (define-syntax syntax-parse/typecheck
   (syntax-parser
@@ -190,16 +199,6 @@
      #'(syntax-parse stx-expr
          option ...
          rule.norm ...)]))
-
-(define-syntax define-typed-syntax
-  (syntax-parser
-    [(_ name:id . r)
-     #'(define-syntax (name stx)
-         (syntax-parse/typecheck stx . r))]
-
-    [(_ (name . pats) :≫ . r)
-     #'(define-typed-syntax name
-         [(_ . pats) :≫ . r])]))
 
 
 
