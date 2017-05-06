@@ -204,7 +204,7 @@
       [T ; do typechecking
        #:with ([x τ] ...) x:ts
        #:do [(before-fn)]
-       #:and (~typecheck [[x ≫ x- : τ] ... ⊢ #,expr ≫ expr- ⇐ T])
+       #:with ((~typecheck [[x ≫ x- : τ] ... ⊢ #,expr ≫ expr- ⇐ T])) '()
        #:do [(after-fn)]
        #'((x- ...) expr-)]))
 
