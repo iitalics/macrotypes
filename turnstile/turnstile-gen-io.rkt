@@ -36,35 +36,34 @@
                               #:datum-literals
                               #:literal-sets
                               #:conventions
-                              #:local-conventions)
+                              #:local-conventions) ~!
                          argument)
                    ...)))
 
   (define-splicing-syntax-class stxparse-dir
-    (pattern (~or (~seq (~or #:with #:when
-                             #:and #:post
-                             #:attr #:do)
+    (pattern (~or (~seq (~or #:and #:post #:when #:do) ~!
                         argument)
-                  (~seq (~or #:fail-when #:fail-unless)
+                  (~seq (~or #:fail-when #:fail-unless
+                             #:with #:attr) ~!
                         argument expression))))
 
 
 
 
-  (define default-input-name
-    (make-parameter ':))
+  (define default-input-key
+    (make-parameter 'expected-type))
 
-  (define default-output-name
+  (define default-output-key
     (make-parameter ':))
 
   (define-splicing-syntax-class key⇐
     (pattern (~seq :⇐ expr)
-             #:with key (default-input-name))
+             #:with key (default-input-key))
     (pattern (:⇐ key expr)))
 
   (define-splicing-syntax-class key⇒
     (pattern (~seq :⇒ expr)
-             #:with key (default-output-name))
+             #:with key (default-output-key))
     (pattern (:⇒ key expr)))
 
   (define-splicing-syntax-class ellipses
@@ -79,8 +78,6 @@
                         premise:tych-premise ...
                         :----
                         concl:tych-conclusion]
-             #:do [(printf "tych-rule. premises: ~a\n"
-                           (syntax->datum #'(premise ...)))]
              #:with norm
              #'[expr-patn
                 #:with (in.expr ...) (prop/inputs this-syntax
@@ -92,15 +89,15 @@
 
   (define-splicing-syntax-class tych-premise
     (pattern dir:stxparse-dir
-             #:do [(printf "stxparse-dir premise: ~a\n"
-                           (syntax->datum #'dir))]
-             #:with (norm ...) #'dir))
+             #:with [norm ...] #'dir))
 
   (define-syntax-class tych-conclusion
-    (pattern [:≻ result]
-             #:with (pre ...) #'()))
+    (pattern [:≻ expr]
+             #:with (pre ...) #'()
+             #:with result #'#`expr))
 
   )
+
 
 (define (prop/inputs stx keys)
   (let/ec break
@@ -121,8 +118,9 @@
 (syntax-parse/typecheck
  'foo
  [pat ≫
+  #:with out #'bar
   --------
-  [≻ 'bar]])
+  [≻ out]])
 
 
 
