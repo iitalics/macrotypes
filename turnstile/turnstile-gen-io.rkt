@@ -59,15 +59,15 @@
   (define expected-output-list-key
     (make-parameter '#%expected-outputs))
 
-  (define-splicing-syntax-class key⇐
+  (define-splicing-syntax-class tag⇐
+    (pattern (:⇐ key expr))
     (pattern (~seq :⇐ expr)
-             #:with key (default-input-key))
-    (pattern (:⇐ key expr)))
+             #:with key (default-input-key)))
 
-  (define-splicing-syntax-class key⇒
+  (define-splicing-syntax-class tag⇒
+    (pattern (:⇒ key expr))
     (pattern (~seq :⇒ expr)
-             #:with key (default-output-key))
-    (pattern (:⇒ key expr)))
+             #:with key (default-output-key)))
 
   (define-splicing-syntax-class ellipses
     (pattern (~seq (~literal ...)))
@@ -75,7 +75,7 @@
 
 
   (define-syntax-class tych-rule
-    (pattern [expr-patn in:key⇐ ...
+    (pattern [expr-patn in:tag⇐ ...
                         :≫
                         premise:tych-premise ...
                         :----
@@ -102,7 +102,7 @@
                                (current-rule-input-keys)))
 
     (pattern [:⊢ template
-                 out:key⇒ ...]
+                 out:tag⇒ ...]
              #:with exp-out-list-key (expected-output-list-key)
              #:with [pre ...]
              #'[#:when (set=? (or (syntax-property this-syntax
