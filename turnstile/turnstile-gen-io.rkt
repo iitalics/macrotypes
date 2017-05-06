@@ -56,6 +56,7 @@
   (define default-output-key
     (make-parameter ':))
 
+  ; #f to not require rules to match expected outputs
   (define expected-output-list-key
     (make-parameter '#%expected-outputs))
 
@@ -103,12 +104,15 @@
 
     (pattern [:⊢ template
                  out:tag⇒ ...]
-             #:with exp-out-list-key (expected-output-list-key)
              #:with [pre ...]
-             #'[#:when (set=? (or (syntax-property this-syntax
-                                                   'exp-out-list-key)
-                                  '())
-                              '(out.key ...))]
+             (cond
+               [(expected-output-list-key)
+                #`[#:when (set=? (or (syntax-property this-syntax
+                                                      '#,(expected-output-list-key))
+                                     '())
+                                 '(out.key ...))]]
+               [else
+                #'[]])
              #:with result
              #'(put-props #`template
                           '(out.key ...)
@@ -149,14 +153,22 @@
          option ...
          rule.norm ...)]))
 
+
+
+
+(begin-for-syntax
+  [expected-output-list-key #f])
+
 (syntax-parse/typecheck
- (put-props #'foo
-            '(i   #%expected-outputs)
-            '(4   (y)))
- [pat (⇐ i _) ≫
+ #'foo
+  [pat (⇐ i _) ≫
       #:with out #'bar
       --------
-      [⊢ out (⇒ y 3)]])
+      [⊢ out (⇒ y 3)]]
+
+ [pat ≫
+  --------
+  [⊢ sadness]])
 
 
 
