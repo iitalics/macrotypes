@@ -259,9 +259,11 @@
   )
 
 
-(define +/curry (lambda (x) (lambda (y) (#%app- + x y))))
+(define- +/curry (lambda (x) (lambda (y) (#%app- + x y))))
 
-(provide #%app #%datum lambda (rename-out [lambda λ])
+(provide #%app #%datum lambda define
+         define-type-alias
+         (rename-out [lambda λ])
          ann typeof
          (type-out All → Nat Int Num Unit)
          (typed-out [[add1 (→ Nat Nat)] succ]
@@ -270,7 +272,6 @@
                     [[values (All (X) (→ X X))] id]
                     [[+/curry (→ Num (→ Num Num))] +]
                     ))
-
 
 ; prints the type of an expression
 (define-typed-syntax typeof
@@ -321,7 +322,6 @@
    --------
    [≻ (#%app (#%app e1 e2 ...) e3)]])
 
-
 (define-typed-syntax #%datum
   ; rule: 1I⇒ (extended for other datum)
   [(_ . k:nat) ≫
@@ -371,7 +371,38 @@
               #:after (lambda ()
                         (ctx-pop-until! (ctx-mark/c mrk)))))
    --------
-   [⊢ (lambda- (x-) body-) ⇒ (→ e1 e2)]])
+   [⊢ (lambda- (x-) body-) ⇒ (→ e1 e2)]]
+
+  [(_ (x y ...) body) ≫
+   --------
+   [≻ (lambda (x) (lambda (y ...) body))]])
+
+
+(define-syntax define
+  (syntax-parser
+    [(_ (f:id [x:id (~datum :) x-ty] ...) (~datum :) ret-ty body)
+     #'(typed-define f : (→ x-ty ... ret-ty)
+                     (lambda (x ...) body))]
+
+    [(_ x:id (~datum :) t:type body)
+     #:with T #'t.norm
+     #:with y (generate-temporary #'x)
+     #'(begin-
+         (define-syntax x (make-rename-transformer (⊢ y : T)))
+         (define- y (ann body : T)))]))
+
+;; τ.norm in 1st case causes "not valid type" error when file is compiled
+(define-syntax define-type-alias
+  (syntax-parser
+    [(_ alias:id τ:any-type)
+     #'(define-syntax- alias
+         (make-variable-like-transformer #'τ))]
+    [(_ (f:id x:id ...) ty)
+     #'(define-syntax- (f stx)
+         (syntax-parse stx
+           [(_ x ...)
+            #:with τ:any-type #'ty
+            #'τ.norm]))]))
 
 
 (define-for-syntax (display-ctx ctx [mrk #f])

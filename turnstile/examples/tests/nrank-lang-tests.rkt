@@ -35,3 +35,17 @@
 
 ; rank-2 foralls
 (check-type (λ (f) (f 3)) : (→ (All (X) (→ X X)) Nat))
+
+; definitions
+(define x : Int 3)
+(check-type x : Int)
+
+(define-type-alias Bool (All (X) (→ X (→ X X))))
+(define if : (All (X) (→ Bool (→ X (→ X X))))
+  (lambda (f x y) (f x y)))
+(define tru : Bool (lambda (x y) x))
+(define fal : Bool (lambda (x y) y))
+
+(check-type (if tru 4 5) : Int ⇒ 4)
+(check-type (if tru () ()) : Unit)
+(typecheck-fail (if () 4 5))
