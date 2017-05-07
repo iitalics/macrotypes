@@ -216,7 +216,7 @@
      #`(define-syntax (name the-stx)
          #,(parse-typecheck #'(the-stx . r)))]
 
-    [(_ (name:id . pats) (~datum ≫) . r)
+    [(_ (name:id . pats) :d≫ . r)
      #`(define-syntax (name the-stx)
          #,(parse-typecheck #'(the-stx
                                [(_ . pats) ≫ . r])))]))
