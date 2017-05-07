@@ -2,6 +2,8 @@
 
 
 
+
+
 (module phase1-params racket/base
   (provide (all-defined-out))
 
@@ -12,8 +14,7 @@
   (define default-output-key
     (make-parameter ':))
 
-  ; #f to not require rules to match expected outputs
-  (define expected-output-list-key
+  (define expected-outputs-key
     (make-parameter '#%expected-outputs))
   )
 
@@ -138,13 +139,14 @@
              #:with e+ (generate-temporary #'prem+tags)
              #:with e- (generate-temporary #'prem-infer)
              #:with [norm ...]
-             #'[#:with e+
-                (put-props #`template
+             #`[#:with e+
+                (put-props (syntax-property #`template
+                                            '#,(expected-outputs-key)
+                                            '(out.key ...))
                            '(in.key ...)
                            (list #`in.expr ...))
                 #:with (_ _ (e-) _) (infer (list #'e+))
-                #:with (out.expr ...) (get-props #'e-
-                                                 '(out.key ...))]))
+                #:with (out.expr ...) (get-props #'e- '(out.key ...))]))
 
 
 
@@ -153,10 +155,8 @@
     (pattern [:d≻ template]
              #:with [pre ...] #'[]
              #:with [post ...] #'[]
-             #:with keys-expr (if (expected-output-list-key)
-                                  #`(cons '#,(expected-output-list-key)
-                                          (current-rule-input-keys))
-                                  #`(current-rule-input-keys))
+             #:with keys-expr #`(cons '#,(expected-outputs-key)
+                                      (current-rule-input-keys))
              #:with result
              #'(transfer-props-list #`template
                                     this-syntax
@@ -166,12 +166,9 @@
     (pattern [:d⊢ template
                   out:tag⇒ ...]
              #:with [pre ...]
-             (if (expected-output-list-key)
-                 #`[#:when (subset? (or (syntax-property this-syntax
-                                                         '#,(expected-output-list-key))
-                                        '())
-                                    '(out.key ...))]
-                 #'[])
+             #`[#:when (subset? (or (syntax-property this-syntax '#,(expected-outputs-key))
+                                    '())
+                                '(out.key ...))]
              #:with [post ...] #'[]
              #:with result #'(put-props #`template
                                         '(out.key ...)
@@ -184,9 +181,6 @@
              #:with result
              #'(raise-syntax-error #f err-msg this-syntax)))
 
-
-  (define (fallback-clause)
-    #'[_ (parse/fallback this-syntax)])
 
   (define fallback-parsers (box '()))
 
@@ -208,7 +202,7 @@
        #`(syntax-parse stx-expr
            option ...
            rule.norm ...
-           #,(fallback-clause))])))
+           [_ (parse/fallback this-syntax)])])))
 
 (define-syntax define-typed-syntax
   (syntax-parser
@@ -228,6 +222,13 @@
    -------
    [⊢ 'k ⇒ Int]])
 
+(define-typed-syntax t/lam
+  #:datum-literals (->)
+  [(_ (x) e) ⇐ (-> A B) ≫
+   [⊢ e ≫ e- ⇐ B]
+   --------
+   [⊢ (lambda (x) e-)]])
+
 (define-typed-syntax (typeof e) ≫
   [⊢ e ≫ e- ⇒ τ]
   --------
@@ -235,6 +236,7 @@
 
 (displayln (typeof (t/dat . 4)))
 (displayln         (t/dat . 4))
+;(displayln (t/lam (x) 4))
 
 #|
 
