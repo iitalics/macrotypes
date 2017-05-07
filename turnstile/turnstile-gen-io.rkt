@@ -222,15 +222,15 @@
 
 
 
-(define-typed-syntax (t/dat . k:integer) ≫
-  -------
-  [⊢ 'k ⇒ Int])
+(define-typed-syntax t/dat
+  [(_ . k:integer) ≫
+   -------
+   [⊢ 'k ⇒ Int]])
 
-(define-typed-syntax typeof
-  [(_ e) ≫
-   [⊢ e ≫ e- ⇒ τ]
-   --------
-   [≻ 'τ]])
+(define-typed-syntax (typeof e) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  --------
+  [≻ 'τ])
 
 (displayln (typeof (t/dat . 4)))
 (displayln         (t/dat . 4))
