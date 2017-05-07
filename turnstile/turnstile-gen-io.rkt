@@ -21,8 +21,9 @@
 (module syntax-classes racket/base
   (require syntax/parse
            racket/syntax
-           (for-meta -1 macrotypes/typecheck)
-           (for-meta 0 (submod ".." phase1-params)))
+           (only-in racket/set subset?)
+           (for-meta -1 (only-in macrotypes/typecheck infer))
+           (submod ".." phase1-params))
   (provide (all-defined-out))
 
 
