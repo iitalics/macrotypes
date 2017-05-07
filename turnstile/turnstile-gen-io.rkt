@@ -196,7 +196,7 @@
   (define (parse/fallback stx)
     (or (for/or ([parser (in-list fallback-parsers)])
           (parser stx))
-        (raise-syntax-error 'typed-syntax "no matching clauses" stx)))
+        (raise-syntax-error #f "no matching clauses" stx)))
 
   (define (add-fallback! name fn)
     (set! fallback-parsers
@@ -213,14 +213,22 @@
 (define-syntax define-typed-syntax
   (syntax-parser
     [(_ name:id . body:tych-parser-body)
-     #`(define-syntax name
+     #'(define-syntax name
          (syntax-parser
            body.norm ...))]
 
     [(_ (name:id . pats) :d≫ . r)
-     #`(define-typed-syntax name
+     #'(define-typed-syntax name
          [(_ . pats) ≫ . r])]))
 
+(define-syntax define-typed-fallbacks
+  (syntax-parser
+    [(_ name:id . body:tych-parser-body)
+     #'(begin-for-syntax
+         (add-fallback! 'name
+                        (syntax-parser
+                          body.norm ...
+                          [_ #f])))]))
 
 
 
@@ -240,6 +248,11 @@
     (make-parameter simple-type=?)))
 
 
+(define-typed-fallbacks chk->inf
+  [_ ≫
+   #:fail-when #t "no expected type; add annotations"
+   --------
+   [⊢ _ (⇒ : _)]])
 
 
 (define-typed-syntax t/dat
@@ -261,10 +274,11 @@
 
 (displayln (typeof (t/dat . 4)))
 (displayln         (t/dat . 4))
-;(displayln (t/lam (x) 4))
+(displayln (t/lam (x) 4))
+
+
 
 #|
-
 
 SYNTAX:
 (syntax-parse/typecheck
