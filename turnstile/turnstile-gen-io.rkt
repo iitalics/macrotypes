@@ -196,39 +196,35 @@
 
   )
 
-(require (for-meta 1 'syntax-classes)
-         (for-meta 2 'syntax-classes)
-         (for-syntax syntax/parse))
+(require (for-meta 1 'syntax-classes syntax/parse))
 
-
-(define-syntax syntax-parse/typecheck
-  (syntax-parser
-    [(_ stx-expr
+(begin-for-syntax
+  (define parse-typecheck
+    (syntax-parser
+      [(stx-expr
         (~and (~seq option ...) :stxparse-options)
         rule:tych-rule ...)
-     #`(syntax-parse stx-expr
-         option ...
-         rule.norm ...
-         #,(fallback-clause))]))
+       #`(syntax-parse stx-expr
+           option ...
+           rule.norm ...
+           #,(fallback-clause))])))
 
 (define-syntax define-typed-syntax
   (syntax-parser
-    [(_ name:id
-        (~and (~seq option ...) :stxparse-options)
-        rule:tych-rule ...)
-     #`(define-syntax name
-         (syntax-parser
-           option ...
-           rule.norm ...
-           #,(fallback-clause)))]))
+    [(_ name:id . r)
+     #`(define-syntax (name the-stx)
+         #,(parse-typecheck #'(the-stx . r)))]
+
+    [(_ (name:id . pats) (~datum ≫) . r)
+     #`(define-syntax (name the-stx)
+         #,(parse-typecheck #'(the-stx
+                               [(_ . pats) ≫ . r])))]))
 
 
 
-
-(define-typed-syntax t/dat
-  [(_ . k:integer) ≫
-   -------
-   [⊢ 'k ⇒ Int]])
+(define-typed-syntax (t/dat . k:integer) ≫
+  -------
+  [⊢ 'k ⇒ Int])
 
 (define-typed-syntax typeof
   [(_ e) ≫
