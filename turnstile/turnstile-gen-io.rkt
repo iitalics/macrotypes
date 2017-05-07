@@ -2,25 +2,6 @@
 
 
 
-(module stx-prop-utils racket/base
-  (provide (all-defined-out))
-
-  (define (get-props stx keys)
-    (let/ec break
-      (for/list ([key (in-list keys)])
-        (or (syntax-property stx key)
-            (break #f)))))
-
-  (define (put-props stx keys vals)
-    (foldl (lambda (k v s)
-             (syntax-property s k v))
-           stx keys vals))
-
-  (define (transfer-props dst src keys)
-    (put-props dst keys (get-props src keys)))
-  )
-
-
 (module phase1-params racket/base
   (provide (all-defined-out))
 
@@ -40,21 +21,40 @@
 (module syntax-classes racket/base
   (require syntax/parse
            racket/syntax
-           macrotypes/typecheck
-           (for-meta 0 (submod ".." phase1-params))
-           (for-meta -1 (submod ".." stx-prop-utils)))
+           (for-meta -1 macrotypes/typecheck)
+           (for-meta 0 (submod ".." phase1-params)))
   (provide (all-defined-out))
 
+
+  (define (get-props stx keys)
+    (let/ec break
+      (for/list ([key (in-list keys)])
+        (or (syntax-property stx key)
+            (break #f)))))
+
+  (define (put-props stx keys vals)
+    (foldl (lambda (k v out)
+             (syntax-property out k v))
+           stx keys vals))
+
+  (define (transfer-props-list dst src keys)
+    (foldl (lambda (k out)
+             (syntax-property out k (syntax-property src k)))
+           dst keys))
+
+
+
+
   ; TODO: non-unicode alternatives (#:keywords?)
-  (define-syntax-class ⇐
+  (define-syntax-class d⇐
     (pattern (~datum ⇐)))
-  (define-syntax-class ⇒
+  (define-syntax-class d⇒
     (pattern (~datum ⇒)))
-  (define-syntax-class ≫
+  (define-syntax-class d≫
     (pattern (~datum ≫)))
-  (define-syntax-class ⊢
+  (define-syntax-class d⊢
     (pattern (~datum ⊢)))
-  (define-syntax-class ≻
+  (define-syntax-class d≻
     (pattern (~datum ≻)))
 
   (define-syntax-class ----
@@ -73,7 +73,7 @@
                               #:literal-sets
                               #:conventions
                               #:local-conventions) ~!
-                         argument)
+                              argument)
                    ...)))
 
   (define-splicing-syntax-class stxparse-dir
@@ -81,19 +81,19 @@
                         argument)
                   (~seq (~or #:fail-when #:fail-unless
                              #:with #:attr) ~!
-                        argument expression))))
+                             argument expression))))
 
 
 
 
   (define-splicing-syntax-class tag⇐
-    (pattern (:⇐ key expr))
-    (pattern (~seq :⇐ expr)
+    (pattern (:d⇐ key expr))
+    (pattern (~seq :d⇐ expr)
              #:with key (default-input-key)))
 
   (define-splicing-syntax-class tag⇒
-    (pattern (:⇒ key expr))
-    (pattern (~seq :⇒ expr)
+    (pattern (:d⇒ key expr))
+    (pattern (~seq :d⇒ expr)
              #:with key (default-output-key)))
 
 
@@ -109,7 +109,7 @@
     (make-parameter '()))
 
   (define-syntax-class tych-rule
-    (pattern [expr-patn in:tag⇐ ... :≫
+    (pattern [expr-patn in:tag⇐ ... :d≫
                         premise:tych-premise ...
                         :----
                         concl:tych-conclusion]
@@ -131,11 +131,9 @@
              #:with [norm ...] #'dir)
 
     ; premise with expression and tags
-    (pattern (~seq [:⊢ template :≫ pattern
-                       in:tag⇐ ...
-                       out:tag⇒ ...] ooo:ellipses)
-             #:do [(printf "premise repeat? ~a\n"
-                           (attribute ooo.repeat?))]
+    (pattern (~seq [:d⊢ template :d≫ pattern
+                        in:tag⇐ ...
+                        out:tag⇒ ...] ooo:ellipses)
              #:with e+ (generate-temporary #'prem+tags)
              #:with e- (generate-temporary #'prem-infer)
              #:with [norm ...]
@@ -151,7 +149,7 @@
 
   (define-syntax-class tych-conclusion
     ; conclusion extends
-    (pattern [:≻ template]
+    (pattern [:d≻ template]
              #:with [pre ...] #'[]
              #:with [post ...] #'[]
              #:with keys-expr (if (expected-output-list-key)
@@ -159,13 +157,13 @@
                                           (current-rule-input-keys))
                                   #`(current-rule-input-keys))
              #:with result
-             #'(transfer-props #`template
-                               this-syntax
-                               keys-expr))
+             #'(transfer-props-list #`template
+                                    this-syntax
+                                    keys-expr))
 
     ; conclusion outputs
-    (pattern [:⊢ template
-                 out:tag⇒ ...]
+    (pattern [:d⊢ template
+                  out:tag⇒ ...]
              #:with [pre ...]
              (if (expected-output-list-key)
                  #`[#:when (set=? (or (syntax-property this-syntax
@@ -181,7 +179,7 @@
     ; conclusion errors
     (pattern [#:error err-msg]
              #:with [pre ...] #'[]
-             #:with [post ...] #'[#:fail-unless #f err-msg]
+             #:with [post ...] #'[];#'[#:fail-unless #f err-msg]
              #:with result
              #'(raise-syntax-error #f err-msg this-syntax)))
 
@@ -189,7 +187,9 @@
 
 (require (for-meta 1
                    'syntax-classes
+                   'phase1-params
                    syntax/parse))
+
 
 (define-syntax syntax-parse/typecheck
   (syntax-parser
@@ -200,11 +200,42 @@
          option ...
          rule.norm ...)]))
 
+(define-syntax define-typed-syntax
+  (syntax-parser
+    [(_ name:id
+        (~and (~seq option ...) :stxparse-options)
+        rule:tych-rule ...)
+     #'(define-syntax name
+         (syntax-parser
+           option ...
+           rule.norm ...))]))
 
 
+(begin-for-syntax
+  [expected-output-list-key #f])
 
+(require (only-in macrotypes/typecheck
+                  define-base-type))
 
+(define-base-type Int)
 
+(define-typed-syntax t/dat
+  [(_ . k:integer) ≫
+   -------
+   [⊢ 'k ⇒ Int]])
+
+(define-typed-syntax typeof
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ τ]
+   --------
+   [≻ 'τ]]
+
+  [_ ≫
+   --------
+   [#:error "inference failed"]])
+
+(displayln (typeof (t/dat . 4)))
+(displayln         (t/dat . 4))
 
 #|
 
