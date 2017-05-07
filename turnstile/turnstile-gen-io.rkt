@@ -111,7 +111,7 @@
     (make-parameter '()))
 
   (define-syntax-class tych-rule
-    (pattern [expr-patn in:tag⇐ ... :d≫
+    (pattern [expr-patn in:tag⇐ ... ~! :d≫
                         premise:tych-premise ...
                         :----
                         concl:tych-conclusion]
@@ -181,39 +181,64 @@
              #:with result
              #'(raise-syntax-error #f err-msg this-syntax)))
 
+  (define-syntax-class tych-parser-body
+    (pattern [options:stxparse-options
+              rule:tych-rule ...]
+             #:with [opts ...] #'options
+             #:with [norm ...]
+             #'[opts ...
+                rule.norm ...
+                [_ (parse/fallback this-syntax)]]))
 
-  (define fallback-parsers (box '()))
+
+  (define fallback-parsers '())
 
   (define (parse/fallback stx)
-    (or (for/or ([parser (in-list (unbox fallback-parsers))])
+    (or (for/or ([parser (in-list fallback-parsers)])
           (parser stx))
         (raise-syntax-error 'typed-syntax "no matching clauses" stx)))
 
+  (define (add-fallback! name fn)
+    (set! fallback-parsers
+          (append fallback-parsers
+                  (list fn))))
+
   )
 
-(require (for-meta 1 'syntax-classes syntax/parse))
-
-(begin-for-syntax
-  (define parse-typecheck
-    (syntax-parser
-      [(stx-expr
-        (~and (~seq option ...) :stxparse-options)
-        rule:tych-rule ...)
-       #`(syntax-parse stx-expr
-           option ...
-           rule.norm ...
-           [_ (parse/fallback this-syntax)])])))
+(require (for-meta 1
+                   'syntax-classes
+                   syntax/parse
+                   racket/syntax))
 
 (define-syntax define-typed-syntax
   (syntax-parser
-    [(_ name:id . r)
-     #`(define-syntax (name the-stx)
-         #,(parse-typecheck #'(the-stx . r)))]
+    [(_ name:id . body:tych-parser-body)
+     #`(define-syntax name
+         (syntax-parser
+           body.norm ...))]
 
     [(_ (name:id . pats) :d≫ . r)
-     #`(define-syntax (name the-stx)
-         #,(parse-typecheck #'(the-stx
-                               [(_ . pats) ≫ . r])))]))
+     #`(define-typed-syntax name
+         [(_ . pats) ≫ . r])]))
+
+
+
+
+(begin-for-syntax
+  (define (simple-type=? t1 t2)
+    (syntax-parse (list t1 t2)
+      [((e1 ...) (e2 ...))
+       #:when (= (length (syntax-e #'(e1 ...)))
+                 (length (syntax-e #'(e2 ...))))
+       (andmap simple-type=?
+               (syntax-e #'(e1 ...))
+               (syntax-e #'(e2 ...)))]
+      [(x:id y:id) (free-identifier=? #'x #'y)]
+      [_ #f]))
+
+  (define current-typecheck-relation
+    (make-parameter simple-type=?)))
+
 
 
 
