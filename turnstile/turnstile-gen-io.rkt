@@ -166,10 +166,10 @@
                   out:tag⇒ ...]
              #:with [pre ...]
              (if (expected-output-list-key)
-                 #`[#:when (set=? (or (syntax-property this-syntax
-                                                       '#,(expected-output-list-key))
-                                      '())
-                                  '(out.key ...))]
+                 #`[#:when (subset? (or (syntax-property this-syntax
+                                                         '#,(expected-output-list-key))
+                                        '())
+                                    '(out.key ...))]
                  #'[])
              #:with [post ...] #'[]
              #:with result #'(put-props #`template
@@ -183,12 +183,22 @@
              #:with result
              #'(raise-syntax-error #f err-msg this-syntax)))
 
+
+  (define (fallback-clause)
+    #'[_ (parse/fallback this-syntax)])
+
+  (define fallback-parsers (box '()))
+
+  (define (parse/fallback stx)
+    (or (for/or ([parser (in-list (unbox fallback-parsers))])
+          (parser stx))
+        (raise-syntax-error 'typed-syntax "no matching clauses" stx)))
+
   )
 
-(require (for-meta 1
-                   'syntax-classes
-                   'phase1-params
-                   syntax/parse))
+(require (for-meta 1 'syntax-classes)
+         (for-meta 2 'syntax-classes)
+         (for-syntax syntax/parse))
 
 
 (define-syntax syntax-parse/typecheck
@@ -196,28 +206,24 @@
     [(_ stx-expr
         (~and (~seq option ...) :stxparse-options)
         rule:tych-rule ...)
-     #'(syntax-parse stx-expr
+     #`(syntax-parse stx-expr
          option ...
-         rule.norm ...)]))
+         rule.norm ...
+         #,(fallback-clause))]))
 
 (define-syntax define-typed-syntax
   (syntax-parser
     [(_ name:id
         (~and (~seq option ...) :stxparse-options)
         rule:tych-rule ...)
-     #'(define-syntax name
+     #`(define-syntax name
          (syntax-parser
            option ...
-           rule.norm ...))]))
+           rule.norm ...
+           #,(fallback-clause)))]))
 
 
-(begin-for-syntax
-  [expected-output-list-key #f])
 
-(require (only-in macrotypes/typecheck
-                  define-base-type))
-
-(define-base-type Int)
 
 (define-typed-syntax t/dat
   [(_ . k:integer) ≫
@@ -228,11 +234,7 @@
   [(_ e) ≫
    [⊢ e ≫ e- ⇒ τ]
    --------
-   [≻ 'τ]]
-
-  [_ ≫
-   --------
-   [#:error "inference failed"]])
+   [≻ 'τ]])
 
 (displayln (typeof (t/dat . 4)))
 (displayln         (t/dat . 4))
