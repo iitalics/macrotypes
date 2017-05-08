@@ -63,9 +63,9 @@
 
 
   (define-splicing-syntax-class tags⇐
-    #:datum-literals (⇐ ≫)
+    #:datum-literals (⇐ ⇒ ≫)
     #:attributes ([tags 1] [exprs 1])
-    (pattern (~seq ⇐ tag:id (~and expr (~not ≫)))
+    (pattern (~seq ⇐ tag:id (~and expr (~not (~or ≫ ⇐ ⇒))))
              #:with [tags ...] #'[tag]
              #:with [exprs ...] #'[expr])
     (pattern (~seq ⇐ expr)
@@ -74,9 +74,9 @@
     (pattern (~seq (⇐ tags:id exprs) ...)))
 
   (define-splicing-syntax-class tags⇒
-    #:datum-literals (⇒ ≫)
+    #:datum-literals (⇐ ⇒ ≫)
     #:attributes ([tags 1] [exprs 1])
-    (pattern (~seq ⇒ tag:id (~and expr (~not ≫)))
+    (pattern (~seq ⇒ tag:id (~and expr (~not (~or ≫ ⇐ ⇒))))
              #:with [tags ...] #'[tag]
              #:with [exprs ...] #'[expr])
     (pattern (~seq ⇒ expr)
