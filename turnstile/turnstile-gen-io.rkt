@@ -89,21 +89,35 @@
 
 
 
+  (define (get-prop stx key [def #f])
+    (or (syntax-property stx key) def))
+
+  (define (get-props stx keys)
+    (map (lambda (k) (get-prop stx k)) keys))
+
+  (define (put-props stx keys vals)
+    (foldl (lambda (k v s) (syntax-property s k v))
+           stx keys vals))
+
+
 
   (define-syntax-class typecheck-rule
     #:datum-literals (≫)
     (pattern [pattern in:tags⇐ ~! ≫
-                      ;premise:typecheck-premise ...
+                      premise:typecheck-premise ...
                       :----
                       conclusion]
-             #:with norm
-             #`[pattern
-                #:when (set=? '(in.tags ...)
-                              (or (syntax-property this-syntax
-                                                   '#,(input-list-property))
-                                  '()))
-                ;premise.norm ... ...
-                conclusion]))
+             #:with norm #`[pattern
+                            #:when (set=? '(in.tags ...)
+                                          (get-prop this-syntax '#,(input-list-property) '()))
+                            #:with (in.exprs ...) (get-props this-syntax '(in.tags ...))
+                            premise.norm ... ...
+                            conclusion]))
+
+
+  (define-splicing-syntax-class typecheck-premise
+    (pattern spdir:stxparse-dir
+             #:with [norm ...] #'spdir))
 
 
   (define-syntax-class typecheck-body
@@ -148,5 +162,6 @@
 (pretty-print
  (syntax->datum
   (expand-once
-   #'(define-typed-syntax foo
-       [xyz (⇐ A a) (⇐ B b) ≫ -------- 4]))))
+   #'(define-typed-syntax lam
+       [(_ (x) body) ⇐ (-> t1 t2) ≫
+        -------- 4]))))
