@@ -28,12 +28,21 @@
   )
 
 
-(require (for-syntax syntax/parse
-                     racket/syntax
-                     'phase1-params
-                     (only-in racket/set set=? subset?)))
+(module syntax-classes racket/base
+  (require syntax/parse
+           racket/syntax
+           (submod ".." phase1-params)
+           (only-in racket/set set=? subset?)
+           (for-syntax racket/base syntax/parse racket/syntax))
 
-(begin-for-syntax
+  (provide typechecking
+           tags⇐ tags⇒
+           rule
+           premise
+           clause
+           #;conclusion)
+
+
   (define-syntax-class ----
     #:commit
     (pattern dashes:id
@@ -84,7 +93,9 @@
              #:with [exprs ...] #'[expr])
     (pattern (~seq (⇒ tags:id exprs) ...)))
 
-  (define-splicing-syntax-class ellipses
+  (define-syntax-class ellipsis
+    (pattern (~literal ...)))
+  (define-splicing-syntax-class ellipsi
     (pattern (~seq (~literal ...) ...)))
 
 
@@ -101,23 +112,46 @@
 
 
 
+
   (define-syntax-class rule
     #:datum-literals (≫)
     (pattern [pattern in:tags⇐ ~! ≫
-                      premise:premise ...
+                      premise:premise/directive ...
                       :----
                       conclusion]
-             #:with norm #`[pattern
-                            #:when (set=? '(in.tags ...)
-                                          (get-prop this-syntax '#,(input-list-property) '()))
+             #:with get-input-list #`(get-prop this-syntax '#,(input-list-property) '())
+             #:with norm #'[pattern
+                            #:when (set=? '(in.tags ...) get-input-list)
                             #:with (in.exprs ...) (get-props this-syntax '(in.tags ...))
                             premise.norm ... ...
                             conclusion]))
 
+  (define-splicing-syntax-class premise/directive
+    (pattern spdir:stxparse-dir
+             #:with [norm ...] #'spdir)
+    (pattern prem:premise
+             #:with [norm ...] #'[prem.norm ...]))
+
+
 
   (define-splicing-syntax-class premise
-    (pattern spdir:stxparse-dir
-             #:with [norm ...] #'spdir))
+    #:datum-literals (⊢)
+    (pattern (~seq [e:ctx-elem ~! ⊢ c:clause ...] ooos:ellipsi)
+             #:with [norm ...] #'[]))
+
+  (define-splicing-syntax-class ctx-elem
+    #:datum-literals (≫)
+    (pattern (~seq [var:id ~! ≫ pattern
+                           (~seq tags:id tag-templs) ...]
+                   ooos:ellipsi)))
+
+  (define-splicing-syntax-class clause
+    #:datum-literals (≫)
+    (pattern (~seq [template ~! ≫ pattern
+                             in:tags⇐
+                             out:tags⇒]
+                   ooos:ellipsi)))
+
 
 
   (define-syntax-class typechecking
@@ -126,12 +160,11 @@
              #:with [opts ...] #'options
              #:with [norm ...] #'[opts ... rule.norm ...]))
 
-
-
-
-
   )
 
+(require (for-meta 1 'syntax-classes)
+         (for-meta 2 'syntax-classes)
+         (for-syntax racket/base syntax/parse racket/syntax))
 
 
 
@@ -156,12 +189,18 @@
     [(_ name:id . body:typechecking)
      #'(define-syntax (name the-stx)
          (syntax-parse the-stx
-           body.norm ...))]))
+           body.norm ...))]
 
-#;
-(pretty-print
- (syntax->datum
-  (expand-once
-   #'(define-typed-syntax lam
-       [(_ (x) body) ⇐ (-> t1 t2) ≫
-        -------- 4]))))
+    [(_ (name:id . pats) . r)
+     #'(define-typed-syntax name
+         [(_ . pats) . r])]))
+
+
+
+(define-typed-syntax (vars [x e1 e2] ...) ≫
+  [[x ≫ x- : Int]
+   ⊢
+   [e1 ≫ e1- ⇐ Int]
+   [e2 ≫ e2- ⇐ Int]]
+  --------
+  #''ok)
