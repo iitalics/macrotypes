@@ -136,17 +136,18 @@
     (pattern (~seq [:d⊢ template :d≫ pattern
                         in:tag⇐ ...
                         out:tag⇒ ...] ooo:ellipses)
-             #:with e+ (generate-temporary #'prem+tags)
-             #:with e- (generate-temporary #'prem-infer)
+             #:with e* (generate-temporary #'prem+tags)
+             #:with e+ (generate-temporary #'prem-infer)
              #:with [norm ...]
-             #`[#:with e+
+             #`[#:with e*
                 (put-props (syntax-property #`template
                                             '#,(expected-outputs-key)
                                             '(out.key ...))
                            '(in.key ...)
                            (list #`in.expr ...))
-                #:with (_ _ (e-) _) (infer (list #'e+))
-                #:with (out.expr ...) (get-props #'e- '(out.key ...))]))
+                #:with (_ _ (e+) _) (infer (list #'e*))
+                #:with pattern #'e+
+                #:with (out.expr ...) (get-props #'e+ '(out.key ...))]))
 
 
 
@@ -181,14 +182,17 @@
              #:with result
              #'(raise-syntax-error #f err-msg this-syntax)))
 
-  (define-syntax-class tych-parser-body
+  (define-syntax-class (tych-parser-body fallback?)
     (pattern [options:stxparse-options
               rule:tych-rule ...]
              #:with [opts ...] #'options
+             #:with [maybe-fallback ...] (if fallback?
+                                             #'[[_ (parse/fallback this-syntax)]]
+                                             #'[])
              #:with [norm ...]
              #'[opts ...
                 rule.norm ...
-                [_ (parse/fallback this-syntax)]]))
+                maybe-fallback ...]))
 
 
   (define fallback-parsers '())
@@ -212,7 +216,7 @@
 
 (define-syntax define-typed-syntax
   (syntax-parser
-    [(_ name:id . body:tych-parser-body)
+    [(_ name:id . (~var body (tych-parser-body #t)))
      #'(define-syntax name
          (syntax-parser
            body.norm ...))]
@@ -223,7 +227,7 @@
 
 (define-syntax define-typed-fallbacks
   (syntax-parser
-    [(_ name:id . body:tych-parser-body)
+    [(_ name:id . (~var body (tych-parser-body #f)))
      #'(begin-for-syntax
          (add-fallback! 'name
                         (syntax-parser
@@ -248,12 +252,19 @@
     (make-parameter simple-type=?)))
 
 
-(define-typed-fallbacks chk->inf
-  [_ ≫
-   #:fail-when #t "no expected type; add annotations"
-   --------
-   [⊢ _ (⇒ : _)]])
 
+(define-typed-fallbacks chk->inf
+  [e
+   (⇐ expected-type τ_in) ≫
+   [⊢ e ≫ e- ⇒ τ_out]
+   #:do [(printf "reverted to inference.\n")]
+   #:when ((current-typecheck-relation) #'τ_out #'τ_in)
+   --------
+   [⊢ e-]]
+
+  [_ ≫
+   --------
+   [#:error "no expected type; add annotations"]])
 
 (define-typed-syntax t/dat
   [(_ . k:integer) ≫
@@ -267,6 +278,12 @@
    --------
    [⊢ (lambda (x) e-)]])
 
+(define-typed-syntax t/ann
+  [(_ e (~datum :) τ) ≫
+   [⊢ e ≫ e- ⇐ τ]
+   --------
+   [⊢ e- ⇒ τ]])
+
 (define-typed-syntax (typeof e) ≫
   [⊢ e ≫ e- ⇒ τ]
   --------
@@ -274,7 +291,7 @@
 
 (displayln (typeof (t/dat . 4)))
 (displayln         (t/dat . 4))
-(displayln (t/lam (x) 4))
+(displayln (t/ann (t/dat . 4) : Float))
 
 
 
