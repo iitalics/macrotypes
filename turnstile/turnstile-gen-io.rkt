@@ -101,10 +101,10 @@
 
 
 
-  (define-syntax-class typecheck-rule
+  (define-syntax-class rule
     #:datum-literals (≫)
     (pattern [pattern in:tags⇐ ~! ≫
-                      premise:typecheck-premise ...
+                      premise:premise ...
                       :----
                       conclusion]
              #:with norm #`[pattern
@@ -115,14 +115,14 @@
                             conclusion]))
 
 
-  (define-splicing-syntax-class typecheck-premise
+  (define-splicing-syntax-class premise
     (pattern spdir:stxparse-dir
              #:with [norm ...] #'spdir))
 
 
-  (define-syntax-class typecheck-body
+  (define-syntax-class typechecking
     (pattern [options:stxparse-options
-              rule:typecheck-rule ...]
+              rule:rule ...]
              #:with [opts ...] #'options
              #:with [norm ...] #'[opts ... rule.norm ...]))
 
@@ -153,7 +153,7 @@
 
 (define-syntax define-typed-syntax
   (syntax-parser
-    [(_ name:id . body:typecheck-body)
+    [(_ name:id . body:typechecking)
      #'(define-syntax (name the-stx)
          (syntax-parse the-stx
            body.norm ...))]))
