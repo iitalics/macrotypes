@@ -30,6 +30,7 @@
 
 (module syntax-classes racket/base
   (require syntax/parse
+           syntax/stx
            racket/syntax
            (submod ".." phase1-params)
            (only-in racket/set set=? subset?)
@@ -127,19 +128,18 @@
   (define (stx-map/depth f dep stx)
     (cond
       [(zero? dep) (f stx)]
+      [(stx-null? stx) stx]
       [else
-       (datum->syntax stx
-                      (map (λ (s) (stx-map/depth f (sub1 dep) s))
-                           (syntax->list stx)))]))
+       (stx-map (λ (s) (stx-map/depth f (sub1 dep) s))
+                stx)]))
 
   (define (stx-flat/depth dep stx)
     (cond
       [(zero? dep) (list stx)]
+      [(stx-null? stx) stx]
       [else
-       (append* (map (λ (s) (stx-flat/depth (sub1 dep) s))
-                     (syntax->list stx)))]))
-
-
+       (append (stx-flat/depth (sub1 dep) (stx-car stx))
+               (stx-flat/depth dep        (stx-cdr stx)))]))
 
 
   ; (nest/ooo #'x #'(... ... ...)) = #'(((x ...) ...) ...)
