@@ -33,8 +33,22 @@
            racket/syntax
            (submod ".." phase1-params)
            (only-in racket/set set=? subset?)
+           (only-in racket/list append*)
+           (only-in racket/format ~a)
+           (only-in racket/string string-join)
            (for-syntax racket/base syntax/parse racket/syntax)
            (for-template (only-in racket/base ...)))
+
+  (define (infer es #:ctx ctx)
+    (printf "infer.\n  es: ~a\n  ctx: ~a\n\n"
+            (string-join (map ~a (syntax->datum es)) ", ")
+            (string-join (map ~a (syntax->datum ctx)) ", "))
+    #`(()
+       #,es
+       #,(map (syntax-parser
+                [(x . tags) #'x])
+              (syntax->list ctx))
+       ()))
 
   (provide typechecking
            tags⇐ tags⇒
@@ -110,6 +124,23 @@
            stx keys vals))
 
 
+  (define (stx-map/depth f dep stx)
+    (cond
+      [(zero? dep) (f stx)]
+      [else
+       (datum->syntax stx
+                      (map (λ (s) (stx-map/depth f (sub1 dep) s))
+                           (syntax->list stx)))]))
+
+  (define (stx-flat/depth dep stx)
+    (cond
+      [(zero? dep) (list stx)]
+      [else
+       (append* (map (λ (s) (stx-flat/depth (sub1 dep) s))
+                     (syntax->list stx)))]))
+
+
+
 
   ; (nest/ooo #'x #'(... ... ...)) = #'(((x ...) ...) ...)
   (define (nest/ooo stx ooos)
@@ -163,33 +194,37 @@
                         in-keyss out-keyss
                         in-list-prop out-list-prop)
     (syntax-parse stx
-      [((xs ...) (es/tags ...))
+      [(xs es/tags)
        ; attach properties
-       #:with (es* ...) (map (λ (stx dep in-keys out-keys)
-                               (stx-map/depth
-                                (syntax-parser
-                                  [(e vals ...)
-                                   (put-props #'e
-                                              (list* in-list-prop
-                                                     out-list-prop
-                                                     in-keys)
-                                              (list* in-keys
-                                                     out-keys
-                                                     (syntax-e #'(vals ...))))])
-                                dep stx))
-                             (syntax-e #'(es/tags ...))
-                             es-deps
-                             in-keyss
-                             out-keyss)
-       #'ok]))
+       #:with es+ (map (λ (stx dep in-keys out-keys)
+                         (stx-map/depth
+                          (syntax-parser
+                            [(e tags ...)
+                             (put-props #'e
+                                        (list* in-list-prop
+                                               out-list-prop
+                                               in-keys)
+                                        (list* in-keys
+                                               out-keys
+                                               (syntax-e #'(tags ...))))])
+                          dep stx))
+                       (syntax->list #'es/tags)
+                       es-deps
+                       in-keyss
+                       out-keyss)
 
-  (define (stx-map/depth f dep stx)
-    (cond
-      [(zero? dep) (f stx)]
-      [else
-       (datum->syntax stx
-                      (map (λ (s) (stx-map/depth f (sub1 dep) s))
-                           (syntax->list stx)))]))
+       ; flatten and infer
+       #:with xs/flat  (append* (map stx-flat/depth
+                                     xs-deps
+                                     (syntax->list #'xs)))
+       #:with es+/flat (append* (map stx-flat/depth
+                                     es-deps
+                                     (syntax->list #'es+)))
+       #:with (_ xs-/flat
+                 es-/flat _) (infer #'es+/flat
+                                    #:ctx #'xs/flat)
+       ; TODO: unflatten
+       #'ok]))
 
 
 
@@ -278,12 +313,13 @@
          [(_ . pats) . r])]))
 
 (define-typed-syntax nests
-  [(_ [e ...] [y x ...]) ≫
-   [[y ≫ y- : A] [x ≫ x- : AA] ⊢ [e ≫ e-
-                                      (⇐ expected-type B)
-                                      (⇒ : T)
-                                      (⇒ efs E)]] ...
+  [(_ [e ...] [(x ...) ...]) ≫
+   [[x ≫ x- : A] ... ⊢
+    [e ≫ e-
+         (⇐ expected-type B)
+         (⇒ : T)
+         (⇒ efs E)]] ...
    --------
-   #''ok])
+   #''()])
 
-(nests [1 2] [a b c])
+(nests [1 2] [(a b) (c d)])
