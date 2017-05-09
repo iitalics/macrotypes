@@ -176,18 +176,13 @@
                          xs-deps es-deps
                          in-keyss out-keyss
                          in-list-prop out-list-prop)
-    (cond
-      [(zero? dep)
-       (expand/depth stxs
-                     xs-deps es-deps
-                     in-keyss out-keyss
-                     in-list-prop out-list-prop)]
-      [else
-       (for/list ([stx (in-list (syntax->list stxs))])
-         (expands/depth stx (sub1 dep)
-                        xs-deps es-deps
-                        in-keyss out-keyss
-                        in-list-prop out-list-prop))]))
+    (stx-map/depth (lambda (stx)
+                     (expand/depth stx
+                                   xs-deps es-deps
+                                   in-keyss out-keyss
+                                   in-list-prop out-list-prop))
+                   dep stxs))
+
 
   (define (expand/depth stx
                         xs-deps es-deps
@@ -223,8 +218,11 @@
        #:with (_ xs-/flat
                  es-/flat _) (infer #'es+/flat
                                     #:ctx #'xs/flat)
+
        ; TODO: unflatten
-       #'ok]))
+       #:with xs- #'xs
+       #:with es- #'es+
+       #'(xs- es-)]))
 
 
 
@@ -236,20 +234,23 @@
     (pattern (~seq [ce:ctx-elem ... ~! ⊢ cl:clause ...]
                    ooo:ellipsis ...)
              ; --
-             #:with pre (generate-temporary #'pre)
              #:with depth (length (syntax-e #'(ooo ...)))
-             #:with xs-es/t (nest/ooo #'((ce.xs ...)
-                                         (cl.e+tags ...))
-                                      #'(ooo ...))
+             #:with xs/es (nest/ooo #'((ce.xs ...)
+                                       (cl.e+tags ...))
+                                    #'(ooo ...))
+             #:with xs/es- (generate-temporary #'xs/es-)
              ;
              #:with [norm ...]
-             #`[#:with _ (expands/depth #'xs-es/t
-                                        'depth
-                                        '(ce.depth ...)
-                                        '(cl.depth ...)
-                                        '(cl.in-keys ...)
-                                        '(cl.out-keys ...)
-                                        '#,(inputs-list-property) '#,(outputs-list-property))]))
+             #`[#:with xs/es- (expands/depth #'xs/es
+                                             'depth
+                                             '(ce.depth ...)
+                                             '(cl.depth ...)
+                                             '(cl.in-keys ...)
+                                             '(cl.out-keys ...)
+                                             '#,(inputs-list-property) '#,(outputs-list-property))
+                #:do [(printf "before: ~a\nafter:  ~a\n"
+                              (syntax->datum #'xs/es)
+                              (syntax->datum #'xs/es-))]]))
 
 
 
@@ -313,13 +314,13 @@
          [(_ . pats) . r])]))
 
 (define-typed-syntax nests
-  [(_ [e ...] [(x ...) ...]) ≫
-   [[x ≫ x- : A] ... ⊢
+  [(_ [e ...] [x ...]) ≫
+   [[x ≫ x- : X] ... ⊢
     [e ≫ e-
          (⇐ expected-type B)
          (⇒ : T)
-         (⇒ efs E)]] ...
+         (⇒ efs E)] ...]
    --------
    #''()])
 
-(nests [1 2] [(a b) (c d)])
+(nests [1 2] [a b])
