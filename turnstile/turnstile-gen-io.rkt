@@ -109,10 +109,7 @@
     (foldl (lambda (k v s) (syntax-property s k v))
            stx keys vals))
 
-  (define (put-props* stxs keys valss)
-    (map (lambda (stx vals)
-           (put-props stx keys vals))
-         stxs valss))
+
 
   ; (nest/ooo #'x #'(... ... ...)) = #'(((x ...) ...) ...)
   (define (nest/ooo stx ooos)
@@ -144,6 +141,58 @@
                             conclusion]))
 
 
+  (define (expands/depth stxs dep
+                         xs-deps es-deps
+                         in-keyss out-keyss
+                         in-list-prop out-list-prop)
+    (cond
+      [(zero? dep)
+       (expand/depth stxs
+                     xs-deps es-deps
+                     in-keyss out-keyss
+                     in-list-prop out-list-prop)]
+      [else
+       (for/list ([stx (in-list (syntax->list stxs))])
+         (expands/depth stx (sub1 dep)
+                        xs-deps es-deps
+                        in-keyss out-keyss
+                        in-list-prop out-list-prop))]))
+
+  (define (expand/depth stx
+                        xs-deps es-deps
+                        in-keyss out-keyss
+                        in-list-prop out-list-prop)
+    (syntax-parse stx
+      [((xs ...) (es/tags ...))
+       ; attach properties
+       #:with (es* ...) (map (λ (stx dep in-keys out-keys)
+                               (stx-map/depth
+                                (syntax-parser
+                                  [(e vals ...)
+                                   (put-props #'e
+                                              (list* in-list-prop
+                                                     out-list-prop
+                                                     in-keys)
+                                              (list* in-keys
+                                                     out-keys
+                                                     (syntax-e #'(vals ...))))])
+                                dep stx))
+                             (syntax-e #'(es/tags ...))
+                             es-deps
+                             in-keyss
+                             out-keyss)
+       #'ok]))
+
+  (define (stx-map/depth f dep stx)
+    (cond
+      [(zero? dep) (f stx)]
+      [else
+       (datum->syntax stx
+                      (map (λ (s) (stx-map/depth f (sub1 dep) s))
+                           (syntax->list stx)))]))
+
+
+
   (define-splicing-syntax-class premise
     #:datum-literals (⊢)
     (pattern spdir:stxparse-dir
@@ -152,36 +201,46 @@
     (pattern (~seq [ce:ctx-elem ... ~! ⊢ cl:clause ...]
                    ooo:ellipsis ...)
              ; --
-             #:with xs (generate-temporary #'xs)
-             #:with es (generate-temporary #'es)
-             #:with xs/es/nested/p (nest/ooo #'(xs es) #'(ooo ...))
-             #:with xs/es/nested (nest/ooo #'((ce.xs ... ...)
-                                              (cl.es ... ...))
-                                           #'(ooo ...))
+             #:with pre (generate-temporary #'pre)
+             #:with depth (length (syntax-e #'(ooo ...)))
+             #:with xs-es/t (nest/ooo #'((ce.xs ...)
+                                         (cl.e+tags ...))
+                                      #'(ooo ...))
              ;
              #:with [norm ...]
-             #`[#:with xs/es/nested/p #'xs/es/nested
-                ]))
+             #`[#:with _ (expands/depth #'xs-es/t
+                                        'depth
+                                        '(ce.depth ...)
+                                        '(cl.depth ...)
+                                        '(cl.in-keys ...)
+                                        '(cl.out-keys ...)
+                                        '#,(inputs-list-property) '#,(outputs-list-property))]))
+
 
 
   (define-splicing-syntax-class ctx-elem
     #:datum-literals (≫)
-    (pattern [x:id ~! ≫ patn
-                   (~seq tag tag-templ) ...]
+    (pattern (~seq [x:id ~! ≫ patn tags ...]
+                   ooo:ellipsis ...)
              ; --
-             #:with [[tag+templ ...] ...] #'[[tag tag-templ] ...]
-             #:with [xs ...] #'[(x tag+templ ... ...)]
-             ))
+             #:with depth (length (syntax-e #'(ooo ...)))
+             #:with xs (nest/ooo #'(x tags ...)
+                                 #'(ooo ...))))
 
 
   (define-splicing-syntax-class clause
     #:datum-literals (≫)
-    (pattern [template ≫ pattern
-                         in:tags⇐
-                         out:tags⇒]
+    (pattern (~seq [template ≫ pattern
+                               in:tags⇐
+                               out:tags⇒]
+                   ooo:ellipsis ...)
              ; --
-             #:with [es ...] #'[template]
-             ))
+             #:with depth (length (syntax-e #'(ooo ...)))
+             #:with e+tags (nest/ooo #'(template in.exprs ...)
+                                     #'(ooo ...))
+             #:with in-keys #'(in.tags ...)
+             #:with out-keys #'(out.tags ...)))
+
 
   )
 
@@ -218,11 +277,13 @@
      #'(define-typed-syntax name
          [(_ . pats) . r])]))
 
-#;
-(syntax->datum (expand-once #'
-                (define-typed-syntax vars
-                  [(_ (x y e) (... ...)) ≫
-                   [[x ≫ x- : Int] [y ≫ y- : Int] ⊢ [e ≫ e- ⇐ Int]] (... ...)
-                   --------
-                   #''ok])
-                ))
+(define-typed-syntax nests
+  [(_ [e ...] [y x ...]) ≫
+   [[y ≫ y- : A] [x ≫ x- : AA] ⊢ [e ≫ e-
+                                      (⇐ expected-type B)
+                                      (⇒ : T)
+                                      (⇒ efs E)]] ...
+   --------
+   #''ok])
+
+(nests [1 2] [a b c])
