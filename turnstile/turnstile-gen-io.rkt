@@ -21,9 +21,9 @@
   ;   'Y  = #`y
   ;   '#%turnstile-inputs  = '(X Y)
   ;   '#%turnstile-outputs = '(Z)
-  (define input-list-property
+  (define inputs-list-property
     (make-parameter '#%turnstile-inputs))
-  (define output-lists-property
+  (define outputs-list-property
     (make-parameter '#%turnstile-outputs))
   )
 
@@ -33,7 +33,8 @@
            racket/syntax
            (submod ".." phase1-params)
            (only-in racket/set set=? subset?)
-           (for-syntax racket/base syntax/parse racket/syntax))
+           (for-syntax racket/base syntax/parse racket/syntax)
+           (for-template (only-in racket/base ...)))
 
   (provide typechecking
            tags⇐ tags⇒
@@ -95,8 +96,6 @@
 
   (define-syntax-class ellipsis
     (pattern (~literal ...)))
-  (define-splicing-syntax-class ellipsi
-    (pattern (~seq (~literal ...) ...)))
 
 
 
@@ -110,55 +109,79 @@
     (foldl (lambda (k v s) (syntax-property s k v))
            stx keys vals))
 
+  (define (put-props* stxs keys valss)
+    (map (lambda (stx vals)
+           (put-props stx keys vals))
+         stxs valss))
 
+  ; (nest/ooo #'x #'(... ... ...)) = #'(((x ...) ...) ...)
+  (define (nest/ooo stx ooos)
+    (syntax-parse ooos
+      [(ooo . r) (nest/ooo #`(#,stx ooo) #'r)]
+      [() stx]))
+
+
+
+
+  (define-syntax-class typechecking
+    (pattern [options:stxparse-options rule:rule ...]
+             #:with [opts ...] #'options
+             #:with [norm ...] #'[opts ... rule.norm ...]))
 
 
   (define-syntax-class rule
     #:datum-literals (≫)
     (pattern [pattern in:tags⇐ ~! ≫
-                      premise:premise/directive ...
+                      premise:premise ...
                       :----
                       conclusion]
-             #:with get-input-list #`(get-prop this-syntax '#,(input-list-property) '())
+             ; --
+             #:with get-input-list #`(get-prop this-syntax '#,(inputs-list-property) '())
              #:with norm #'[pattern
                             #:when (set=? '(in.tags ...) get-input-list)
                             #:with (in.exprs ...) (get-props this-syntax '(in.tags ...))
                             premise.norm ... ...
                             conclusion]))
 
-  (define-splicing-syntax-class premise/directive
-    (pattern spdir:stxparse-dir
-             #:with [norm ...] #'spdir)
-    (pattern prem:premise
-             #:with [norm ...] #'[prem.norm ...]))
-
-
 
   (define-splicing-syntax-class premise
     #:datum-literals (⊢)
-    (pattern (~seq [e:ctx-elem ~! ⊢ c:clause ...] ooos:ellipsi)
-             #:with [norm ...] #'[]))
+    (pattern spdir:stxparse-dir
+             #:with [norm ...] #'spdir)
+
+    (pattern (~seq [ce:ctx-elem ... ~! ⊢ cl:clause ...]
+                   ooo:ellipsis ...)
+             ; --
+             #:with xs (generate-temporary #'xs)
+             #:with es (generate-temporary #'es)
+             #:with xs/es/nested/p (nest/ooo #'(xs es) #'(ooo ...))
+             #:with xs/es/nested (nest/ooo #'((ce.xs ... ...)
+                                              (cl.es ... ...))
+                                           #'(ooo ...))
+             ;
+             #:with [norm ...]
+             #`[#:with xs/es/nested/p #'xs/es/nested
+                ]))
+
 
   (define-splicing-syntax-class ctx-elem
     #:datum-literals (≫)
-    (pattern (~seq [var:id ~! ≫ pattern
-                           (~seq tags:id tag-templs) ...]
-                   ooos:ellipsi)))
+    (pattern [x:id ~! ≫ patn
+                   (~seq tag tag-templ) ...]
+             ; --
+             #:with [[tag+templ ...] ...] #'[[tag tag-templ] ...]
+             #:with [xs ...] #'[(x tag+templ ... ...)]
+             ))
+
 
   (define-splicing-syntax-class clause
     #:datum-literals (≫)
-    (pattern (~seq [template ~! ≫ pattern
-                             in:tags⇐
-                             out:tags⇒]
-                   ooos:ellipsi)))
-
-
-
-  (define-syntax-class typechecking
-    (pattern [options:stxparse-options
-              rule:rule ...]
-             #:with [opts ...] #'options
-             #:with [norm ...] #'[opts ... rule.norm ...]))
+    (pattern [template ≫ pattern
+                         in:tags⇐
+                         out:tags⇒]
+             ; --
+             #:with [es ...] #'[template]
+             ))
 
   )
 
@@ -195,12 +218,11 @@
      #'(define-typed-syntax name
          [(_ . pats) . r])]))
 
-
-
-(define-typed-syntax (vars [x e1 e2] ...) ≫
-  [[x ≫ x- : Int]
-   ⊢
-   [e1 ≫ e1- ⇐ Int]
-   [e2 ≫ e2- ⇐ Int]]
-  --------
-  #''ok)
+#;
+(syntax->datum (expand-once #'
+                (define-typed-syntax vars
+                  [(_ (x y e) (... ...)) ≫
+                   [[x ≫ x- : Int] [y ≫ y- : Int] ⊢ [e ≫ e- ⇐ Int]] (... ...)
+                   --------
+                   #''ok])
+                ))
