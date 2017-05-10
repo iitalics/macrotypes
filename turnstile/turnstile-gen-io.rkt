@@ -21,6 +21,10 @@
   ;   'Y  = #`y
   ;   '#%turnstile-inputs  = '(X Y)
   ;   '#%turnstile-outputs = '(Z)
+  ; and expect the following properties after expansion:
+  ;   'Z  = <something>
+  ;   '#%turnstile-inputs  = #f
+  ;   '#%turnstile-outputs = '(Z)
   (define inputs-list-property
     (make-parameter '#%turnstile-inputs))
   (define outputs-list-property
