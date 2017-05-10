@@ -38,17 +38,20 @@
            (only-in racket/format ~a)
            (only-in racket/string string-join)
            (for-syntax racket/base syntax/parse racket/syntax)
-           (for-template (only-in racket/base ...)))
+           (for-template racket/base))
 
   (define (infer es #:ctx ctx)
-    #`(()
-       #,(stx-map (syntax-parser
-                    [(x . tags) (format-id #'x "~a-" (syntax-e #'x))])
-                  ctx)
-       #,(stx-map (syntax-parser
-                    [e #'(#%expression e)])
-                  es)
-       ()))
+    (syntax-parse ctx
+      [([x tags ...] ...)
+       #:with (e ...) es
+       (syntax-parse (local-expand #'(lambda (x ...)
+                                       (#%expression e) ...)
+                                   'expression
+                                   '())
+         [((~literal #%plain-lambda)
+           (x- ...)
+           ((~literal #%expression) e-) ...)
+          #'(() (x- ...) (e- ...) ())])]))
 
   (provide typechecking
            tags⇐ tags⇒
@@ -190,19 +193,19 @@
   (define (expands/depth stxs dep
                          xs-deps es-deps
                          in-keyss out-keyss
-                         in-list-prop out-list-prop)
+                         #%ins #%outs)
     (stx-map/depth (lambda (stx)
                      (expand/depth stx
                                    xs-deps es-deps
                                    in-keyss out-keyss
-                                   in-list-prop out-list-prop))
+                                   #%ins #%outs))
                    dep stxs))
 
 
   (define (expand/depth stx
                         xs-deps es-deps
                         in-keyss out-keyss
-                        in-list-prop out-list-prop)
+                        #%ins #%outs)
     (syntax-parse stx
       [(xs es/tags)
        ; attach properties
@@ -211,8 +214,8 @@
                           (syntax-parser
                             [(e tags ...)
                              (put-props #'e
-                                        (list* in-list-prop
-                                               out-list-prop
+                                        (list* #%ins
+                                               #%outs
                                                in-keys)
                                         (list* in-keys
                                                out-keys
