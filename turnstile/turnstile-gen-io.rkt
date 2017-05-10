@@ -41,14 +41,13 @@
            (for-template (only-in racket/base ...)))
 
   (define (infer es #:ctx ctx)
-    (printf "infer.\n  es: ~a\n  ctx: ~a\n\n"
-            (string-join (map ~a (syntax->datum es)) ", ")
-            (string-join (map ~a (syntax->datum ctx)) ", "))
     #`(()
-       #,es
-       #,(map (syntax-parser
-                [(x . tags) #'x])
-              (syntax->list ctx))
+       #,(stx-map (syntax-parser
+                    [(x . tags) (format-id #'x "~a-" (syntax-e #'x))])
+                  ctx)
+       #,(stx-map (syntax-parser
+                    [e #'(#%expression e)])
+                  es)
        ()))
 
   (provide typechecking
@@ -141,6 +140,22 @@
        (append (stx-flat/depth (sub1 dep) (stx-car stx))
                (stx-flat/depth dep        (stx-cdr stx)))]))
 
+  (define (stx-unflat/depths deps lst orig)
+    (define (next!)
+      (let ([x (stx-car lst)])
+        (set! lst (stx-cdr lst))
+        x))
+    (define (unflat/depth d stx)
+      (cond
+        [(zero? d) (next!)]
+        [else
+         (stx-map (λ (s) (unflat/depth (sub1 d) s))
+                  stx)]))
+    (stx-map unflat/depth
+             deps
+             orig))
+
+
 
   ; (nest/ooo #'x #'(... ... ...)) = #'(((x ...) ...) ...)
   (define (nest/ooo stx ooos)
@@ -219,9 +234,9 @@
                  es-/flat _) (infer #'es+/flat
                                     #:ctx #'xs/flat)
 
-       ; TODO: unflatten
-       #:with xs- #'xs
-       #:with es- #'es+
+       ; unflatten
+       #:with xs- (stx-unflat/depths xs-deps #'xs-/flat  #'xs)
+       #:with es- (stx-unflat/depths es-deps #'es-/flat #'es/tags)
        #'(xs- es-)]))
 
 
@@ -235,10 +250,10 @@
                    ooo:ellipsis ...)
              ; --
              #:with depth (length (syntax-e #'(ooo ...)))
-             #:with xs/es (nest/ooo #'((ce.xs ...)
-                                       (cl.e+tags ...))
-                                    #'(ooo ...))
-             #:with xs/es- (generate-temporary #'xs/es-)
+             #:with xs/es  (nest/ooo #'((ce.xs ...)  (cl.e+tags ...))
+                                     #'(ooo ...))
+             #:with xs/es- (nest/ooo #'((ce.xs- ...) (cl.e- ...))
+                                     #'(ooo ...))
              ;
              #:with [norm ...]
              #`[#:with xs/es- (expands/depth #'xs/es
@@ -248,9 +263,7 @@
                                              '(cl.in-keys ...)
                                              '(cl.out-keys ...)
                                              '#,(inputs-list-property) '#,(outputs-list-property))
-                #:do [(printf "before: ~a\nafter:  ~a\n"
-                              (syntax->datum #'xs/es)
-                              (syntax->datum #'xs/es-))]]))
+                ]))
 
 
 
@@ -261,7 +274,9 @@
              ; --
              #:with depth (length (syntax-e #'(ooo ...)))
              #:with xs (nest/ooo #'(x tags ...)
-                                 #'(ooo ...))))
+                                 #'(ooo ...))
+             #:with xs- (nest/ooo #'patn
+                                  #'(ooo ...))))
 
 
   (define-splicing-syntax-class clause
@@ -271,12 +286,13 @@
                                out:tags⇒]
                    ooo:ellipsis ...)
              ; --
+             #:with in-keys #'(in.tags ...)
+             #:with out-keys #'(out.tags ...)
              #:with depth (length (syntax-e #'(ooo ...)))
              #:with e+tags (nest/ooo #'(template in.exprs ...)
                                      #'(ooo ...))
-             #:with in-keys #'(in.tags ...)
-             #:with out-keys #'(out.tags ...)))
-
+             #:with e- (nest/ooo #'pattern
+                                 #'(ooo ...))))
 
   )
 
@@ -321,6 +337,6 @@
          (⇒ : T)
          (⇒ efs E)] ...]
    --------
-   #''()])
+   #''(==> (x- ...) e- ...)])
 
 (nests [1 2] [a b])
