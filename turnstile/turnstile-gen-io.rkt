@@ -242,12 +242,14 @@
                             #:ctx [ctx '()]
                             #:tvctx [tvctx '()])
     (define (check e- e)
+      (define new-tag-vals (map (lambda (k) (syntax-property e- k))
+                                (syntax-property e #%outs)))
       (cond
         [(and (null? (syntax-property e- #%ins))
               (equal? (syntax-property e #%outs)
-                      (syntax-property e- #%outs)))
-         (cons e- (map (lambda (k) (syntax-property e- k))
-                       (syntax-property e #%outs)))]
+                      (syntax-property e- #%outs))
+              (andmap values new-tag-vals))
+         (cons e- new-tag-vals)]
 
         [else
          (raise-syntax-error #f
@@ -375,7 +377,7 @@
 
 (define-typed-syntax typed-lambda
   [(_ (x) e) ≫
-   [[x ≫ x- : Int] ⊢ [e ≫ e-]]
+   [[x ≫ x- : Int] ⊢ [e ≫ e- (⇒ : τ)]]
    --------
    [≻ (λ (x-) e-)]])
 
