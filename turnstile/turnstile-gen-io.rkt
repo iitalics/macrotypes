@@ -172,14 +172,15 @@
     (pattern [pattern in:tags⇐ ~! ≫
                       premise:premise ...
                       :----
-                      conclusion]
+                      conclusion:conclusion]
              ; --
              #:with get-input-list #`(get-prop this-syntax '#,(inputs-list-property) '())
              #:with norm #'[pattern
+                            conclusion.pre ...
                             #:when (set=? '(in.tags ...) get-input-list)
                             #:with (in.exprs ...) (get-props this-syntax '(in.tags ...))
                             premise.norm ... ...
-                            conclusion]))
+                            conclusion.norm ...]))
 
 
   (define (expands/depth stxs dep
@@ -287,7 +288,7 @@
                                          #'(ooo ...))
              ;
              #:with [norm ...]
-             #`[#:with xs/estags- (expands/depth #'xs/estags
+             #`[#:with xs/estags- (expands/depth #`xs/estags
                                                  'depth
                                                  '(ce.depth ...)
                                                  '(cl.depth ...)
@@ -324,6 +325,12 @@
                                      #'(ooo ...))
              #:with e-+tags (nest/ooo #'(pattern out.exprs ...)
                                       #'(ooo ...))))
+
+  (define-syntax-class conclusion
+    #:datum-literals (≻ ⊢)
+    (pattern [≻ e-]
+             #:with [pre ...] #'[]
+             #:with [norm ...] #'[#`e-]))
 
   )
 
@@ -370,6 +377,6 @@
   [(_ (x) e) ≫
    [[x ≫ x- : Int] ⊢ [e ≫ e-]]
    --------
-   #'e-])
+   [≻ (λ (x-) e-)]])
 
-(typed-lambda (x) 3)
+((typed-lambda (x) x) 4)
