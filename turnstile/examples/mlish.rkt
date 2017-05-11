@@ -5,11 +5,11 @@
  (for-syntax macrotypes/type-constraints macrotypes/variance-constraints))
 
 (extends
- "ext-stlc.rkt" 
+ "ext-stlc.rkt"
  #:except → define #%app λ #%datum begin
           + - * void = zero? sub1 add1 not let let* and
  #:rename [~→ ~ext-stlc:→])
-(reuse inst #:from "sysf.rkt") 
+(reuse inst #:from "sysf.rkt")
 (require (only-in "ext-stlc.rkt" → →?))
 (require (only-in "sysf.rkt" ~∀ ∀ ∀? Λ))
 (reuse × tup proj define-type-alias #:from "stlc+rec-iso.rkt")
@@ -72,7 +72,7 @@
       [(?Λ (X ...) body)
        #'(Λ (X ...) body)])))
 
-(begin-for-syntax 
+(begin-for-syntax
   ;; matching possibly polymorphic types
   (define-syntax ~?∀
     (pattern-expander
@@ -121,7 +121,7 @@
                   (infer+erase (if (empty? (find-free-Xs Xs ty_in))
                                    (add-expected-ty a ty_in)
                                    a)))
-                (values 
+                (values
                  (cons #'a- as-)
                  (add-constraints Xs cs (list (list ty_in #'ty_a))
                                   (list (list (inst-type/cs/orig
@@ -315,8 +315,8 @@
   ;; computes unbound ids in (unexpanded) tys, to be used as tyvars
   (define (compute-tyvars tys)
     (define Xs (stx-appendmap compute-tyvar1 tys))
-    (filter 
-     (lambda (X) 
+    (filter
+     (lambda (X)
        (with-handlers
         ([exn:fail:syntax:unbound? (lambda (e) #t)]
          [exn:fail:type:infer? (lambda (e) #t)])
@@ -338,7 +338,7 @@
         (define-syntax x (make-rename-transformer (⊢ y : τ)))
         (define- y e-))]]
   ; explicit "forall"
-  [(_ Ys (f:id [x:id (~datum :) τ] ... (~or (~datum ->) (~datum →)) τ_out) 
+  [(_ Ys (f:id [x:id (~datum :) τ] ... (~or (~datum ->) (~datum →)) τ_out)
      e_body ... e) ≫
    #:when (brace? #'Ys)
    ;; TODO; remove this code duplication
@@ -348,7 +348,7 @@
    ;; TODO: check that specified return type is correct
    ;; - currently cannot do it here; to do the check here, need all types of
    ;;  top-lvl fns, since they can call each other
-   #:with (~and ty_fn_expected (~?∀ _ (~ext-stlc:→ _ ... out_expected))) 
+   #:with (~and ty_fn_expected (~?∀ _ (~ext-stlc:→ _ ... out_expected)))
           ((current-type-eval) #'(?∀ Ys (ext-stlc:→ τ+orig ...)))
    --------
    [≻ (begin-
@@ -359,7 +359,7 @@
   [(_ (f:id x:id ...) (~datum :) ty ... (~or (~datum ->) (~datum →)) ty_out . b) ≫
    --------
    [≻ (define (f [x : ty] ... -> ty_out) . b)]]
-  [(_ (f:id [x:id (~datum :) τ] ... (~or (~datum ->) (~datum →)) τ_out) 
+  [(_ (f:id [x:id (~datum :) τ] ... (~or (~datum ->) (~datum →)) τ_out)
      e_body ... e) ≫
    #:with Ys (compute-tyvars #'(τ ... τ_out))
    #:with g (add-orig (generate-temporary #'f) #'f)
@@ -368,8 +368,8 @@
    ;; TODO: check that specified return type is correct
    ;; - currently cannot do it here; to do the check here, need all types of
    ;;  top-lvl fns, since they can call each other
-   #:with (~and ty_fn_expected (~?∀ _ (~ext-stlc:→ _ ... out_expected))) 
-          (set-stx-prop/preserved 
+   #:with (~and ty_fn_expected (~?∀ _ (~ext-stlc:→ _ ... out_expected)))
+          (set-stx-prop/preserved
            ((current-type-eval) #'(?∀ Ys (ext-stlc:→ τ+orig ...)))
            'orig
            (list #'(→ τ+orig ...)))
@@ -396,7 +396,7 @@
        ;; constructors must have the form (Cons τ ...)
        ;; but the first ~or clause accepts 0-arg constructors as ids;
        ;; the ~and is a workaround to bind the duplicate Cons ids (see Ryan's email)
-       (~and (~or (~and IdCons:id 
+       (~and (~or (~and IdCons:id
                         (~parse (Cons [fld (~datum :) τ] ...) #'(IdCons)))
                   (Cons [fld (~datum :) τ] ...)
                   (~and (Cons τ ...)
@@ -404,28 +404,28 @@
      ;; validate tys
      #:with (ty_flat ...) (stx-flatten #'((τ ...) ...))
      #:with (_ _ (_ _ (_ _ (_ _ ty+ ...))))
-            (with-handlers 
+            (with-handlers
               ([exn:fail:syntax:unbound?
-                (λ (e) 
+                (λ (e)
                   (define X (stx-car (exn:fail:syntax-exprs e)))
                   #`(lambda () (let-syntax () (let-syntax () (#%app void unbound)))))])
-              (expand/df 
+              (expand/df
                 #`(lambda (X ...)
                     (let-syntax
-                      ([Name 
-                        (syntax-parser 
+                      ([Name
+                        (syntax-parser
                          [(_ X ...) (mk-type #'void)]
-                         [stx 
-                          (type-error 
+                         [stx
+                          (type-error
                            #:src #'stx
-                           #:msg 
+                           #:msg
                            (format "Improper use of constructor ~a; expected ~a args, got ~a"
                                    (syntax->datum #'Name) (stx-length #'(X ...))
                                    (stx-length (stx-cdr #'stx))))])]
                        [X (make-rename-transformer (mk-type #'X))] ...)
                       (void ty_flat ...)))))
      #:when (or (equal? '(unbound) (syntax->datum #'(ty+ ...)))
-                (stx-map 
+                (stx-map
                   (lambda (t+ t) (unless (type? t+)
                               (type-error #:src t
                                           #:msg "~a is not a valid type" t)))
@@ -437,7 +437,7 @@
      #:with ((e_arg- ...) ...) (stx-map generate-temporaries #'((τ ...) ...))
      #:with ((τ_arg ...) ...) (stx-map generate-temporaries #'((τ ...) ...))
      #:with ((exposed-acc ...) ...)
-            (stx-map 
+            (stx-map
               (λ (C fs) (stx-map (λ (f) (format-id C "~a-~a" C f)) fs))
               #'(Cons ...) #'((fld ...) ...))
      #:with ((acc ...) ...) (stx-map (λ (S fs) (stx-map (λ (f) (format-id S "~a-~a" S f)) fs))
@@ -465,16 +465,16 @@
              (⊢ acc (?∀ (X ...) (ext-stlc:→ (Name X ...) τ)))]
             [(o . rst) ; handle if used in fn position
              #:with app (datum->syntax #'o '#%app)
-             #`(app 
-                #,(assign-type #'acc #'(?∀ (X ...) (ext-stlc:→ (Name X ...) τ))) 
+             #`(app
+                #,(assign-type #'acc #'(?∀ (X ...) (ext-stlc:→ (Name X ...) τ)))
                 . rst)])) ... ...
          (define-syntax (exposed-Cons? stx) ; predicates for each variant
            (syntax-parse stx
             [_:id (⊢ Cons? (?∀ (X ...) (ext-stlc:→ (Name X ...) Bool)))]
             [(o . rst) ; handle if used in fn position
              #:with app (datum->syntax #'o '#%app)
-             #`(app 
-                #,(assign-type #'Cons? #'(?∀ (X ...) (ext-stlc:→ (Name X ...) Bool))) 
+             #`(app
+                #,(assign-type #'Cons? #'(?∀ (X ...) (ext-stlc:→ (Name X ...) Bool)))
                 . rst)])) ...
          ;; TODO: remove default provides to use define-typed-syntax here
          (define-typerule Cons
@@ -533,7 +533,7 @@
          #:when (not (stx-null? #'(p ...)))
          #:when (andmap (lambda (u) (equal? u 'unquote)) (syntax->datum #'(unq ...)))
          (unify-pat+ty #'(ps ty))]
-        [{p ...} 
+        [{p ...}
          (unify-pat+ty #'((p ...) ty))])] ; pair
       [((~datum _) ty) #'()]
       [((~or (~literal stlc+cons:nil)) ty) #'()]
@@ -564,14 +564,14 @@
        #:with (_ (_ Cons) _ _ [_ _ τ] ...)
               (stx-findf
                 (syntax-parser
-                 [(_ 'C . rst) 
+                 [(_ 'C . rst)
                   (equal? (syntax->datum #'Name) (syntax->datum #'C))])
                 (stx-cdr (get-extra-info #'ty)))
        (unifys #'([p τ] ...))]
       [p+t #:fail-when #t (format "could not unify ~a" (syntax->datum #'p+t))
        #'()]))
   (define (unifys p+tys) (stx-appendmap unify-pat+ty p+tys))
-  
+
   (define (compile-pat p ty)
     (syntax-parse p
      [pat #:when (brace? #'pat) ; handle root pattern specially (to avoid some parens)
@@ -623,7 +623,7 @@
       #:with (_ (_ Cons) (_ StructName) _ [_ _ τ] ...)
              (stx-findf
                (syntax-parser
-                [(_ 'C . rst) 
+                [(_ 'C . rst)
                  (equal? (syntax->datum #'Name) (syntax->datum #'C))])
                (stx-cdr (get-extra-info ty)))
       #:with (p- ...) (stx-map compile-pat #'pats #'(τ ...))
@@ -666,9 +666,9 @@
         [((_ p ...) ...)
          (syntax-parse ty
            [(~× t ...)
-            (apply stx-andmap 
-                   (lambda (t . ps) (check-exhaust ps t)) 
-                   #'(t ...) 
+            (apply stx-andmap
+                   (lambda (t . ps) (check-exhaust ps t))
+                   #'(t ...)
                    (syntax->list #'((p ...) ...)))])])]
      [else ; algebraic datatypes
       (syntax-parse (get-extra-info ty)
@@ -683,7 +683,7 @@
                 (let ([last (car (stx-rev pats))])
                   (format "(~a:~a) clauses not exhaustive; missing: ~a"
                           (syntax-line last) (syntax-column last)
-                          (string-join      
+                          (string-join
                             (for/list ([C Cs][Cstr Cstructs] #:unless (member Cstr Cpats))
                               (symbol->string C))
                             ", ")))))
@@ -738,8 +738,8 @@
                  (~and (~seq (~seq x ::) ... rst:id) (~parse xs #'())))
             -> e_body] ...+)
           #'clauses
-   #:fail-unless (stx-ormap 
-                  (lambda (xx) (and (brack? xx) (zero? (stx-length xx)))) 
+   #:fail-unless (stx-ormap
+                  (lambda (xx) (and (brack? xx) (zero? (stx-length xx))))
                   #'(xs ...))
                  "match: missing empty list case"
    #:fail-unless (not (and (stx-andmap brack? #'(xs ...))
@@ -753,7 +753,7 @@
    #:with (pred? ...) (stx-map
                        (lambda (l lo) #`(λ- (lst) (#,lo (length lst) #,l)))
                        #'(len ...) #'(lenop ...))
-   #:with ((acc1 ...) ...) (stx-map 
+   #:with ((acc1 ...) ...) (stx-map
                             (lambda (xs)
                               (for/list ([(x i) (in-indexed (syntax->list xs))])
                                 #`(lambda- (lst) (list-ref- lst #,(datum->syntax #'here i)))))
@@ -771,7 +771,7 @@
    [⊢ e ≫ e- ⇒ τ_e]
    #:when (and (not (×? #'τ_e)) (not (List? #'τ_e)))
    #:with t_expect (get-expected-type this-syntax) ; propagate inferred type
-   #:with ([Clause:id x:id ... 
+   #:with ([Clause:id x:id ...
                       (~optional (~seq #:when e_guard) #:defaults ([e_guard #'(ext-stlc:#%datum . #t)]))
                       -> e_c_un] ...+) ; un = unannotated with expected ty
           #'clauses
@@ -783,22 +783,22 @@
    (type-error #:src this-syntax
                #:msg (string-append
                       "match: clauses not exhaustive; missing: "
-                      (string-join      
+                      (string-join
                        (map symbol->string
-                            (set-subtract 
+                            (set-subtract
                              (syntax->datum #'(ConsAll ...))
                              (syntax->datum #'(Clause ...))))
                        ", ")))
    #:with ((_ _ _ Cons? [_ acc τ] ...) ...)
           (map ; ok to compare symbols since clause names can't be rebound
-           (lambda (Cl) 
+           (lambda (Cl)
              (stx-findf
               (syntax-parser
                 [(_ 'C . rst) (equal? Cl (syntax->datum #'C))])
               (stx-cdr #'info-body))) ; drop leading #%app
            (syntax->datum #'(Clause ...)))
    ;; this commented block experiments with expanding to unsafe ops
-   ;; #:with ((acc ...) ...) (stx-map 
+   ;; #:with ((acc ...) ...) (stx-map
    ;;                         (lambda (accs)
    ;;                          (for/list ([(a i) (in-indexed (syntax->list accs))])
    ;;                            #`(lambda (s) (unsafe-struct*-ref s #,(datum->syntax #'here i)))))
@@ -809,14 +809,14 @@
    --------
    [⊢ (let- ([z e-])
         (cond-
-         [(and- (Cons? z) 
+         [(and- (Cons? z)
                 (let- ([x- (acc z)] ...) e_guard-))
           (let- ([x- (acc z)] ...) e_c-)] ...))
        ⇒ (⊔ τ_ec ...)]])
 
 ; special arrow that computes free vars; for use with tests
 ; (because we can't write explicit forall
-(define-syntax →/test 
+(define-syntax →/test
   (syntax-parser
     [(→/test (~and Xs (X:id ...)) . rst)
      #:when (brace? #'Xs)
@@ -946,17 +946,17 @@
   [(channel-get c) ⇐ : ty ≫
    [⊢ [c ≫ c- ⇐ : (Channel ty)]]
    --------
-   [⊢ [_ ≫ (channel-get- c-) ⇐ : _]]]
+   [⊢ (channel-get- c-)]]
   [(channel-get c) ≫
    [⊢ [c ≫ c- ⇒ : (~Channel ty)]]
    --------
-   [⊢ [_ ≫ (channel-get- c-) ⇒ : ty]]])
+   [⊢ (channel-get- c-) ⇒ : ty]])
 (define-typed-syntax channel-put
   [(channel-put c v) ≫
    [⊢ [c ≫ c- ⇒ : (~Channel ty)]]
    [⊢ [v ≫ v- ⇐ : ty]]
    --------
-   [⊢ [_ ≫ (channel-put- c- v-) ⇒ : Unit]]])
+   [⊢ (channel-put- c- v-) ⇒ : Unit]])
 
 (define-base-type Thread)
 
@@ -965,7 +965,7 @@
   [(thread th) ≫
    [⊢ [th ≫ th- ⇒ : (~?∀ () (~ext-stlc:→ τ_out))]]
    --------
-   [⊢ [_ ≫ (thread- th-) ⇒ : Thread]]])
+   [⊢ (thread- th-) ⇒ : Thread]])
 
 (provide (typed-out [random : (→ Int Int)]
                     [integer->char : (→ Int Char)]
@@ -974,15 +974,15 @@
 (define-typed-syntax number->string
   [number->string:id ≫
    --------
-   [⊢ [_ ≫ number->string- ⇒ : (→ Int String)]]]
+   [⊢ number->string- ⇒ : (→ Int String)]]
   [(number->string n) ≫
    --------
-   [_ ≻ (number->string n (ext-stlc:#%datum . 10))]]
+   [≻ (number->string n (ext-stlc:#%datum . 10))]]
   [(number->string n rad) ≫
    [⊢ [n ≫ n- ⇐ : Int]]
    [⊢ [rad ≫ rad- ⇐ : Int]]
    --------
-   [⊢ [_ ≫ (number->string- n rad) ⇒ : String]]])
+   [⊢ (number->string- n rad) ⇒ : String]])
 (provide (typed-out [string : (→ Char String)]
                     [sleep : (→ Int Unit)]
                     [string=? : (→ String String Bool)]
@@ -992,7 +992,7 @@
   [(string-append str ...) ≫
    [⊢ [str ≫ str- ⇐ : String] ...]
    --------
-   [⊢ [_ ≫ (string-append- str- ...) ⇒ : String]]])
+   [⊢ (string-append- str- ...) ⇒ : String]])
 
 ;; vectors
 (define-type-constructor Vector)
@@ -1001,56 +1001,56 @@
   [(vector (~and tys {ty})) ≫
    #:when (brace? #'tys)
    --------
-   [⊢ [_ ≫ (vector-) ⇒ : (Vector ty)]]]
+   [⊢ (vector-) ⇒ : (Vector ty)]]
   [(vector v ...) ⇐ : (Vector ty) ≫
    [⊢ [v ≫ v- ⇐ : ty] ...]
    --------
-   [⊢ [_ ≫ (vector- v- ...) ⇐ : _]]]
+   [⊢ (vector- v- ...)]]
   [(vector v ...) ≫
    [⊢ [v ≫ v- ⇒ : ty] ...]
    #:when (same-types? #'(ty ...))
    #:with one-ty (stx-car #'(ty ...))
    --------
-   [⊢ [_ ≫ (vector- v- ...) ⇒ : (Vector one-ty)]]])
+   [⊢ (vector- v- ...) ⇒ : (Vector one-ty)]])
 (define-typed-syntax make-vector
   [(make-vector n) ≫
    --------
-   [_ ≻ (make-vector n (ext-stlc:#%datum . 0))]]
+   [≻ (make-vector n (ext-stlc:#%datum . 0))]]
   [(make-vector n e) ≫
    [⊢ [n ≫ n- ⇐ : Int]]
    [⊢ [e ≫ e- ⇒ : ty]]
    --------
-   [⊢ [_ ≫ (make-vector- n- e-) ⇒ : (Vector ty)]]])
+   [⊢ (make-vector- n- e-) ⇒ : (Vector ty)]])
 (define-typed-syntax vector-length
   [(vector-length e) ≫
    [⊢ [e ≫ e- ⇒ : (~Vector _)]]
    --------
-   [⊢ [_ ≫ (vector-length- e-) ⇒ : Int]]])
+   [⊢ (vector-length- e-) ⇒ : Int]])
 (define-typed-syntax vector-ref
   [(vector-ref e n) ⇐ : ty ≫
    [⊢ [e ≫ e- ⇐ : (Vector ty)]]
    [⊢ [n ≫ n- ⇐ : Int]]
    --------
-   [⊢ [_ ≫ (vector-ref- e- n-) ⇐ : _]]]
+   [⊢ (vector-ref- e- n-)]]
   [(vector-ref e n) ≫
    [⊢ [e ≫ e- ⇒ : (~Vector ty)]]
    [⊢ [n ≫ n- ⇐ : Int]]
    --------
-   [⊢ [_ ≫ (vector-ref- e- n-) ⇒ : ty]]])
+   [⊢ (vector-ref- e- n-) ⇒ : ty]])
 (define-typed-syntax vector-set!
   [(vector-set! e n v) ≫
    [⊢ [e ≫ e- ⇒ : (~Vector ty)]]
    [⊢ [n ≫ n- ⇐ : Int]]
    [⊢ [v ≫ v- ⇐ : ty]]
    --------
-   [⊢ [_ ≫ (vector-set!- e- n- v-) ⇒ : Unit]]])
+   [⊢ (vector-set!- e- n- v-) ⇒ : Unit]])
 (define-typed-syntax vector-copy!
   [(vector-copy! dest start src) ≫
    [⊢ [dest ≫ dest- ⇒ : (~Vector ty)]]
    [⊢ [start ≫ start- ⇐ : Int]]
    [⊢ [src ≫ src- ⇐ : (Vector ty)]]
    --------
-   [⊢ [_ ≫ (vector-copy!- dest- start- src-) ⇒ : Unit]]])
+   [⊢ (vector-copy!- dest- start- src-) ⇒ : Unit]])
 
 
 ;; sequences and for loops
@@ -1060,44 +1060,44 @@
 (define-typed-syntax in-range
   [(in-range end) ≫
    --------
-   [_ ≻ (in-range (ext-stlc:#%datum . 0) end (ext-stlc:#%datum . 1))]]
+   [≻ (in-range (ext-stlc:#%datum . 0) end (ext-stlc:#%datum . 1))]]
   [(in-range start end) ≫
    --------
-   [_ ≻ (in-range start end (ext-stlc:#%datum . 1))]]
+   [≻ (in-range start end (ext-stlc:#%datum . 1))]]
   [(in-range start end step) ≫
    [⊢ [start ≫ start- ⇐ : Int]]
    [⊢ [end ≫ end- ⇐ : Int]]
    [⊢ [step ≫ step- ⇐ : Int]]
    --------
-   [⊢ [_ ≫ (in-range- start- end- step-) ⇒ : (Sequence Int)]]])
+   [⊢ (in-range- start- end- step-) ⇒ : (Sequence Int)]])
 
 (define-typed-syntax in-naturals
  [(in-naturals) ≫
   --------
-  [_ ≻ (in-naturals (ext-stlc:#%datum . 0))]]
+  [≻ (in-naturals (ext-stlc:#%datum . 0))]]
  [(in-naturals start) ≫
   [⊢ [start ≫ start- ⇐ : Int]]
   --------
-  [⊢ [_ ≫ (in-naturals- start-) ⇒ : (Sequence Int)]]])
+  [⊢ (in-naturals- start-) ⇒ : (Sequence Int)]])
 
 
 (define-typed-syntax in-vector
   [(in-vector e) ≫
    [⊢ [e ≫ e- ⇒ : (~Vector ty)]]
    --------
-   [⊢ [_ ≫ (in-vector- e-) ⇒ : (Sequence ty)]]])
+   [⊢ (in-vector- e-) ⇒ : (Sequence ty)]])
 
 (define-typed-syntax in-list
   [(in-list e) ≫
    [⊢ [e ≫ e- ⇒ : (~List ty)]]
    --------
-   [⊢ [_ ≫ (in-list- e-) ⇒ : (Sequence ty)]]])
+   [⊢ (in-list- e-) ⇒ : (Sequence ty)]])
 
 (define-typed-syntax in-lines
   [(in-lines e) ≫
    [⊢ [e ≫ e- ⇐ : String]]
    --------
-   [⊢ [_ ≫ (in-lines- (open-input-string- e-)) ⇒ : (Sequence String)]]])
+   [⊢ (in-lines- (open-input-string- e-)) ⇒ : (Sequence String)]])
 
 (define-typed-syntax for
   [(for ([x:id e]...) b ... body) ≫
@@ -1105,39 +1105,39 @@
    [() ([x ≫ x- : ty] ...)
     ⊢ [b ≫ b- ⇒ : _] ... [body ≫ body- ⇒ : _]]
    --------
-   [⊢ [_ ≫ (for- ([x- e-] ...) b- ... body-) ⇒ : Unit]]])
+   [⊢ (for- ([x- e-] ...) b- ... body-) ⇒ : Unit]])
 (define-typed-syntax for*
   [(for* ([x:id e]...) b ... body) ≫
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([x ≫ x- : ty] ...)
     ⊢ [b ≫ b- ⇒ : _] ... [body ≫ body- ⇒ : _]]
    --------
-   [⊢ [_ ≫ (for*- ([x- e-] ...) b- ... body-) ⇒ : Unit]]])
+   [⊢ (for*- ([x- e-] ...) b- ... body-) ⇒ : Unit]])
 
 (define-typed-syntax for/list
   [(for/list ([x:id e]...) body) ≫
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([x ≫ x- : ty] ...) ⊢ [body ≫ body- ⇒ : ty_body]]
    --------
-   [⊢ [_ ≫ (for/list- ([x- e-] ...) body-) ⇒ : (List ty_body)]]])
+   [⊢ (for/list- ([x- e-] ...) body-) ⇒ : (List ty_body)]])
 (define-typed-syntax for/vector
   [(for/vector ([x:id e]...) body) ≫
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([x ≫ x- : ty] ...) ⊢ [body ≫ body- ⇒ : ty_body]]
    --------
-   [⊢ [_ ≫ (for/vector- ([x- e-] ...) body-) ⇒ : (Vector ty_body)]]])
+   [⊢ (for/vector- ([x- e-] ...) body-) ⇒ : (Vector ty_body)]])
 (define-typed-syntax for*/vector
   [(for*/vector ([x:id e]...) body) ≫
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([x ≫ x- : ty] ...) ⊢ [body ≫ body- ⇒ : ty_body]]
    --------
-   [⊢ [_ ≫ (for*/vector- ([x- e-] ...) body-) ⇒ : (Vector ty_body)]]])
+   [⊢ (for*/vector- ([x- e-] ...) body-) ⇒ : (Vector ty_body)]])
 (define-typed-syntax for*/list
   [(for*/list ([x:id e]...) body) ≫
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([x ≫ x- : ty] ...) ⊢ [body ≫ body- ⇒ : ty_body]]
    --------
-   [⊢ [_ ≫ (for*/list- ([x- e-] ...) body-) ⇒ : (List ty_body)]]])
+   [⊢ (for*/list- ([x- e-] ...) body-) ⇒ : (List ty_body)]])
 (define-typed-syntax for/fold
   [(for/fold ([acc init]) ([x:id e] ...) body) ⇐ : τ_expected ≫
    [⊢ [init ≫ init- ⇐ : τ_expected]]
@@ -1145,34 +1145,34 @@
    [() ([acc ≫ acc- : τ_expected] [x ≫ x- : ty] ...)
     ⊢ [body ≫ body- ⇐ : τ_expected]]
    --------
-   [⊢ [_ ≫ (for/fold- ([acc- init-]) ([x- e-] ...) body-) ⇐ : _]]]
+   [⊢ (for/fold- ([acc- init-]) ([x- e-] ...) body-)]]
   [(for/fold ([acc init]) ([x:id e] ...) body) ≫
    [⊢ [init ≫ init- ⇒ : τ_init]]
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([acc ≫ acc- : τ_init] [x ≫ x- : ty] ...)
     ⊢ [body ≫ body- ⇐ : τ_init]]
    --------
-   [⊢ [_ ≫ (for/fold- ([acc- init-]) ([x- e-] ...) body-) ⇒ : τ_init]]])
+   [⊢ (for/fold- ([acc- init-]) ([x- e-] ...) body-) ⇒ : τ_init]])
 
 (define-typed-syntax for/hash
   [(for/hash ([x:id e]...) body) ≫
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([x ≫ x- : ty] ...) ⊢ [body ≫ body- ⇒ : (~× ty_k ty_v)]]
    --------
-   [⊢ [_ ≫ (for/hash- ([x- e-] ...)
-             (let- ([t body-])
-               (values- (car- t) (cadr- t))))
-       ⇒ : (Hash ty_k ty_v)]]])
+   [⊢ (for/hash- ([x- e-] ...)
+                 (let- ([t body-])
+                       (values- (car- t) (cadr- t))))
+      ⇒ : (Hash ty_k ty_v)]])
 
 (define-typed-syntax for/sum
-  [(for/sum ([x:id e]... 
+  [(for/sum ([x:id e]...
              (~optional (~seq #:when guard) #:defaults ([guard #'#t])))
      body) ≫
    [⊢ [e ≫ e- ⇒ : (~Sequence ty)] ...]
    [() ([x ≫ x- : ty] ...)
     ⊢ [guard ≫ guard- ⇒ : _] [body ≫ body- ⇐ : Int]]
    --------
-   [⊢ [_ ≫ (for/sum- ([x- e-] ... #:when guard-) body-) ⇒ : Int]]])
+   [⊢ (for/sum- ([x- e-] ... #:when guard-) body-) ⇒ : Int]])
 
 ; printing and displaying
 (define-typed-syntax printf
@@ -1180,34 +1180,34 @@
    [⊢ [str ≫ s- ⇐ : String]]
    [⊢ [e ≫ e- ⇒ : ty] ...]
    --------
-   [⊢ [_ ≫ (printf- s- e- ...) ⇒ : Unit]]])
+   [⊢ (printf- s- e- ...) ⇒ : Unit]])
 (define-typed-syntax format
   [(format str e ...) ≫
    [⊢ [str ≫ s- ⇐ : String]]
    [⊢ [e ≫ e- ⇒ : ty] ...]
    --------
-   [⊢ [_ ≫ (format- s- e- ...) ⇒ : String]]])
+   [⊢ (format- s- e- ...) ⇒ : String]])
 (define-typed-syntax display
   [(display e) ≫
    [⊢ [e ≫ e- ⇒ : _]]
    --------
-   [⊢ [_ ≫ (display- e-) ⇒ : Unit]]])
+   [⊢ (display- e-) ⇒ : Unit]])
 (define-typed-syntax displayln
   [(displayln e) ≫
    [⊢ [e ≫ e- ⇒ : _]]
    --------
-   [⊢ [_ ≫ (displayln- e-) ⇒ : Unit]]])
+   [⊢ (displayln- e-) ⇒ : Unit]])
 (provide (typed-out [newline : (→ Unit)]))
 
 (define-typed-syntax list->vector
   [(list->vector e) ⇐ : (~Vector ty) ≫
    [⊢ [e ≫ e- ⇐ : (List ty)]]
    --------
-   [⊢ [_ ≫ (list->vector- e-) ⇐ : _]]]
+   [⊢ (list->vector- e-)]]
   [(list->vector e) ≫
    [⊢ [e ≫ e- ⇒ : (~List ty)]]
    --------
-   [⊢ [_ ≫ (list->vector- e-) ⇒ : (Vector ty)]]])
+   [⊢ (list->vector- e-) ⇒ : (Vector ty)]])
 
 (define-typed-syntax let
   [(let name:id (~datum :) ty:type ~! ([x:id e] ...) b ... body) ≫
@@ -1215,28 +1215,28 @@
    [() ([name ≫ name- : (→ ty_e ... ty.norm)] [x ≫ x- : ty_e] ...)
     ⊢ [b ≫ b- ⇒ : _] ... [body ≫ body- ⇐ : ty.norm]]
    --------
-   [⊢ [_ ≫ (letrec- ([name- (λ- (x- ...) b- ... body-)])
-             (name- e- ...))
-       ⇒ : ty.norm]]]
+   [⊢ (letrec- ([name- (λ- (x- ...) b- ... body-)])
+               (name- e- ...))
+      ⇒ : ty.norm]]
   [(let ([x:id e] ...) body ...) ≫
    --------
-   [_ ≻ (ext-stlc:let ([x e] ...) (begin body ...))]])
+   [≻ (ext-stlc:let ([x e] ...) (begin body ...))]])
 (define-typed-syntax let*
   [(let* ([x:id e] ...) body ...) ≫
    --------
-   [_ ≻ (ext-stlc:let* ([x e] ...) (begin body ...))]])
+   [≻ (ext-stlc:let* ([x e] ...) (begin body ...))]])
 
 (define-typed-syntax begin
   [(begin body ... b) ⇐ : τ_expected ≫
    [⊢ [body ≫ body- ⇒ : _] ...]
    [⊢ [b ≫ b- ⇐ : τ_expected]]
    --------
-   [⊢ [_ ≫ (begin- body- ... b-) ⇐ : _]]]
+   [⊢ (begin- body- ... b-)]]
   [(begin body ... b) ≫
    [⊢ [body ≫ body- ⇒ : _] ...]
    [⊢ [b ≫ b- ⇒ : τ]]
    --------
-   [⊢ [_ ≫ (begin- body- ... b-) ⇒ : τ]]])
+   [⊢ (begin- body- ... b-) ⇒ : τ]])
 
 ;; hash
 (define-type-constructor Hash #:arity = 2)
@@ -1245,14 +1245,14 @@
   [(_ e) ≫
    [⊢ [e ≫ e- ⇒ : (~Hash ty_k ty_v)]]
    --------
-   [⊢ [_ ≫ (hash-map- e- list-) ⇒ : (Sequence (stlc+rec-iso:× ty_k ty_v))]]])
+   [⊢ (hash-map- e- list-) ⇒ : (Sequence (stlc+rec-iso:× ty_k ty_v))]])
 
 ; mutable hashes
 (define-typed-syntax hash
   [(hash (~and tys {ty_key ty_val})) ≫
    #:when (brace? #'tys)
    --------
-   [⊢ [_ ≫ (make-hash-) ⇒ : (Hash ty_key ty_val)]]]
+   [⊢ (make-hash-) ⇒ : (Hash ty_key ty_val)]]
   [(hash (~seq k v) ...) ≫
    [⊢ [k ≫ k- ⇒ : ty_k] ...]
    [⊢ [v ≫ v- ⇒ : ty_v] ...]
@@ -1261,38 +1261,38 @@
    #:with ty_key (stx-car #'(ty_k ...))
    #:with ty_val (stx-car #'(ty_v ...))
    --------
-   [⊢ [_ ≫ (make-hash- (list- (cons- k- v-) ...)) ⇒ : (Hash ty_key ty_val)]]])
+   [⊢ (make-hash- (list- (cons- k- v-) ...)) ⇒ : (Hash ty_key ty_val)]])
 (define-typed-syntax hash-set!
   [(hash-set! h k v) ≫
    [⊢ [h ≫ h- ⇒ : (~Hash ty_k ty_v)]]
    [⊢ [k ≫ k- ⇐ : ty_k]]
    [⊢ [v ≫ v- ⇐ : ty_v]]
    --------
-   [⊢ [_ ≫ (hash-set!- h- k- v-) ⇒ : Unit]]])
+   [⊢ (hash-set!- h- k- v-) ⇒ : Unit]])
 (define-typed-syntax hash-ref
   [(hash-ref h k) ≫
    [⊢ [h ≫ h- ⇒ : (~Hash ty_k ty_v)]]
    [⊢ [k ≫ k- ⇐ : ty_k]]
    --------
-   [⊢ [_ ≫ (hash-ref- h- k-) ⇒ : ty_v]]]
+   [⊢ (hash-ref- h- k-) ⇒ : ty_v]]
   [(hash-ref h k fail) ≫
    [⊢ [h ≫ h- ⇒ : (~Hash ty_k ty_v)]]
    [⊢ [k ≫ k- ⇐ : ty_k]]
    [⊢ [fail ≫ fail- ⇐ : (→ ty_v)]]
    --------
-   [⊢ [_ ≫ (hash-ref- h- k- fail-) ⇒ : ty_val]]])
+   [⊢ (hash-ref- h- k- fail-) ⇒ : ty_val]])
 (define-typed-syntax hash-has-key?
   [(hash-has-key? h k) ≫
    [⊢ [h ≫ h- ⇒ : (~Hash ty_k _)]]
    [⊢ [k ≫ k- ⇐ : ty_k]]
    --------
-   [⊢ [_ ≫ (hash-has-key?- h- k-) ⇒ : Bool]]])
+   [⊢ (hash-has-key?- h- k-) ⇒ : Bool]])
 
 (define-typed-syntax hash-count
   [(hash-count h) ≫
    [⊢ [h ≫ h- ⇒ : (~Hash _ _)]]
    --------
-   [⊢ [_ ≫ (hash-count- h-) ⇒ : Int]]])
+   [⊢ (hash-count- h-) ⇒ : Int]])
 
 (define-base-type String-Port)
 (define-base-type Input-Port)
@@ -1303,28 +1303,28 @@
 (define-typed-syntax write-string
  [(write-string str out) ≫
   --------
-  [_ ≻ (write-string str out (ext-stlc:#%datum . 0) (string-length str))]]
+  [≻ (write-string str out (ext-stlc:#%datum . 0) (string-length str))]]
  [(write-string str out start end) ≫
   [⊢ [str ≫ str- ⇐ : String]]
   [⊢ [out ≫ out- ⇐ : String-Port]]
   [⊢ [start ≫ start- ⇐ : Int]]
   [⊢ [end ≫ end- ⇐ : Int]]
   --------
-  [⊢ [_ ≫ (begin- (write-string- str- out- start- end-) (void-)) ⇒ : Unit]]])
+  [⊢ (begin- (write-string- str- out- start- end-) (void-)) ⇒ : Unit]])
 
 (define-typed-syntax string-length
  [(string-length str) ≫
   [⊢ [str ≫ str- ⇐ : String]]
   --------
-  [⊢ [_ ≫ (string-length- str-) ⇒ : Int]]])
+  [⊢ (string-length- str-) ⇒ : Int]])
 (provide (typed-out [make-string : (→ Int String)]
                     [string-set! : (→ String Int Char Unit)]
                     [string-ref : (→ String Int Char)]))
 (define-typed-syntax string-copy!
   [(string-copy! dest dest-start src) ≫
    --------
-   [_ ≻ (string-copy!
-         dest dest-start src (ext-stlc:#%datum . 0) (string-length src))]]
+   [≻ (string-copy!
+       dest dest-start src (ext-stlc:#%datum . 0) (string-length src))]]
   [(string-copy! dest dest-start src src-start src-end) ≫
    [⊢ [dest ≫ dest- ⇐ : String]]
    [⊢ [src ≫ src- ⇐ : String]]
@@ -1332,7 +1332,7 @@
    [⊢ [src-start ≫ src-start- ⇐ : Int]]
    [⊢ [src-end ≫ src-end- ⇐ : Int]]
    --------
-   [⊢ [_ ≫ (string-copy!- dest- dest-start- src- src-start- src-end-) ⇒ : Unit]]])
+   [⊢ (string-copy!- dest- dest-start- src- src-start- src-end-) ⇒ : Unit]])
 
 (provide (typed-out [fl+ : (→ Float Float Float)]
                     [fl- : (→ Float Float Float)]
@@ -1350,9 +1350,9 @@
    [⊢ [x ≫ x- ⇐ : Int]]
    [⊢ [y ≫ y- ⇐ : Int]]
    --------
-   [⊢ [_ ≫ (let-values- ([[a b] (quotient/remainder- x- y-)])
-             (list- a b))
-       ⇒ : (stlc+rec-iso:× Int Int)]]])
+   [⊢ (let-values- ([[a b] (quotient/remainder- x- y-)])
+         (list- a b))
+      ⇒ : (stlc+rec-iso:× Int Int)]])
 (provide (typed-out [quotient : (→ Int Int Int)]))
 
 (define-typed-syntax set!
@@ -1360,12 +1360,12 @@
    [⊢ [x ≫ x- ⇒ : ty_x]]
    [⊢ [e ≫ e- ⇐ : ty_x]]
    --------
-   [⊢ [_ ≫ (set!- x e-) ⇒ : Unit]]])
+   [⊢ (set!- x e-) ⇒ : Unit]])
 
 (define-typed-syntax provide-type
   [(provide-type ty ...) ≫
    --------
-   [_ ≻ (provide- ty ...)]])
+   [≻ (provide- ty ...)]])
 
 (define-typed-syntax mlish-provide #:export-as provide
   [(provide x:id ...) ≫
@@ -1373,18 +1373,18 @@
    ; TODO: use hash-code to generate this tmp
    #:with (x-ty ...) (stx-map (lambda (y) (format-id y "~a-ty" y)) #'(x ...))
    --------
-   [_ ≻ (begin-
-          (provide- x ...)
-          (stlc+rec-iso:define-type-alias x-ty ty_x) ...
-          (provide- x-ty ...))]])
+   [≻ (begin-
+        (provide- x ...)
+        (stlc+rec-iso:define-type-alias x-ty ty_x) ...
+        (provide- x-ty ...))]])
 (define-typed-syntax require-typed
   [(require-typed x:id ... #:from mod) ≫
    #:with (x-ty ...) (stx-map (lambda (y) (format-id y "~a-ty" y)) #'(x ...))
    #:with (y ...) (generate-temporaries #'(x ...))
    --------
-   [_ ≻ (begin-
-          (require- (rename-in (only-in mod x ... x-ty ...) [x y] ...))
-          (define-syntax x (make-rename-transformer (assign-type #'y #'x-ty))) ...)]])
+   [≻ (begin-
+        (require- (rename-in (only-in mod x ... x-ty ...) [x y] ...))
+        (define-syntax x (make-rename-transformer (assign-type #'y #'x-ty))) ...)]])
 
 (define-base-type Regexp)
 (provide (typed-out [regexp-match : (→ Regexp String (List String))]
@@ -1395,15 +1395,15 @@
    [⊢ [e1 ≫ e1- ⇒ : ty1]]
    [⊢ [e2 ≫ e2- ⇐ : ty1]]
    --------
-   [⊢ [_ ≫ (equal?- e1- e2-) ⇒ : Bool]]])
+   [⊢ (equal?- e1- e2-) ⇒ : Bool]])
 
 (define-typed-syntax read-int
   [(read-int) ≫
    --------
-   [⊢ [_ ≫ (let- ([x (read-)])
-             (cond- [(exact-integer?- x) x]
-                    [else (error- 'read-int "expected an int, given: ~v" x)]))
-       ⇒ : Int]]])
+   [⊢ (let- ([x (read-)])
+         (cond- [(exact-integer?- x) x]
+                [else (error- 'read-int "expected an int, given: ~v" x)]))
+       ⇒ : Int]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
