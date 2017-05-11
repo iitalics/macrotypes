@@ -166,7 +166,7 @@
                                      #'(→ X- ... τ_body)
                                      #'([id_2 τ_2] ...))
    --------
-   [⊢ [_ ≫ (λ- (x- ...) body-) ⇒ : τ_fn]]])
+   [⊢ (λ- (x- ...) body-) ⇒ : τ_fn]])
 
 (define-typed-syntax #%app
   [(_ e_fn e_arg ...) ≫
@@ -186,7 +186,7 @@
                                          [A τ_arg] ...
                                          [τ_5 τ_6] ... ...))
    --------
-   [⊢ [_ ≫ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]]])
+   [⊢ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]])
 
 (define-typed-syntax ann #:datum-literals (:)
   [(ann e:expr : τ:type) ≫
@@ -200,21 +200,21 @@
                                         ...))
    [τ_e* τ⊑ τ.norm #:for e]
    --------
-   [⊢ [_ ≫ e- ⇒ : τ.norm]]])
+   [⊢ e- ⇒ : τ.norm]])
 
 (define-typed-syntax define
   [(define x:id e:expr) ≫
    [⊢ [e ≫ e- ⇒ : τ_e]]
    #:with tmp (generate-temporary #'x)
    --------
-   [_ ≻ (begin-
-          (define-syntax- x (make-rename-transformer (⊢ tmp : τ_e)))
-          (define- tmp e-))]])
+   [≻ (begin-
+        (define-syntax- x (make-rename-transformer (⊢ tmp : τ_e)))
+        (define- tmp e-))]])
 
 (define-typed-syntax define/rec #:datum-literals (:)
   [(define/rec x:id : τ_x:type e:expr) ≫
    #:with tmp (generate-temporary #'x)
    --------
-   [_ ≻ (begin-
-          (define-syntax- x (make-rename-transformer (⊢ tmp : τ_x.norm)))
-          (define- tmp (ann e : τ_x.norm)))]])
+   [≻ (begin-
+        (define-syntax- x (make-rename-transformer (⊢ tmp : τ_x.norm)))
+        (define- tmp (ann e : τ_x.norm)))]])

@@ -1,5 +1,5 @@
 #lang turnstile/lang
-(extends "ext-stlc.rkt" 
+(extends "ext-stlc.rkt"
  #:except #%app #%datum + add1 sub1 *
           Int Int? ~Int Float Float? ~Float Bool ~Bool Bool?)
 
@@ -46,11 +46,11 @@
 (define-type-constructor U* #:arity >= 0)
 
 (define-for-syntax (prune+sort tys)
-  (stx-sort 
-   (filter-maximal 
+  (stx-sort
+   (filter-maximal
     (stx->list tys)
     typecheck?)))
-  
+
 (define-syntax (U stx)
   (syntax-parse stx
     [(_ . tys)
@@ -64,33 +64,33 @@
   (make-variable-like-transformer
    (add-orig #'(U False True) #'Bool)))
 (define-syntax Nat
-  (make-variable-like-transformer 
+  (make-variable-like-transformer
    (add-orig #'(U Zero PosInt) #'Nat)))
 (define-syntax Int
-  (make-variable-like-transformer 
+  (make-variable-like-transformer
    (add-orig #'(U NegInt Nat) #'Int)))
-(define-syntax Num 
+(define-syntax Num
   (make-variable-like-transformer (add-orig #'(U Float Int) #'Num)))
 
 (define-typed-syntax #%datum
   [(_ . b:boolean) ≫
    #:with ty_out (if (syntax-e #'b) #'True #'False)
    --------
-   [⊢ [_ ≫ (#%datum- . b) ⇒ : ty_out]]]
+   [⊢ (#%datum- . b) ⇒ : ty_out]]
   [(_ . n:integer) ≫
    #:with ty_out (let ([m (syntax-e #'n)])
                    (cond [(zero? m) #'Zero]
                          [(> m 0) #'PosInt]
                          [else #'NegInt]))
    --------
-   [⊢ [_ ≫ (#%datum- . n) ⇒ : ty_out]]]
+   [⊢ (#%datum- . n) ⇒ : ty_out]]
   [(#%datum . n:number) ≫
    #:when (real? (syntax-e #'n))
    --------
-   [⊢ [_ ≫ (#%datum- . n) ⇒ : Float]]]
+   [⊢ (#%datum- . n) ⇒ : Float]]
   [(_ . x) ≫
    --------
-   [_ ≻ (ext-stlc:#%datum . x)]])
+   [≻ (ext-stlc:#%datum . x)]])
 
 (define-typed-syntax #%app
   [(_ e_fn e_arg ...) ≫
@@ -99,7 +99,7 @@
    (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
    [⊢ [e_arg ≫ e_arg- ⇐ : τ_in] ...]
    --------
-   [⊢ [_ ≫ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]]])
+   [⊢ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]])
 
 (begin-for-syntax
   (define (sub? t1 t2)
@@ -108,7 +108,7 @@
    ;; (define τ2 ((current-type-eval) t2))
     ;; (printf "t1 = ~a\n" (syntax->datum t1))
     ;; (printf "t2 = ~a\n" (syntax->datum t2))
-    (or 
+    (or
      ((current-type=?) t1 t2)
      (syntax-parse (list t1 t2)
        ; 2 U types, subtype = subset
@@ -128,6 +128,6 @@
   (define (subs? τs1 τs2)
     (and (stx-length=? τs1 τs2)
          (stx-andmap (current-sub?) τs1 τs2)))
-  
+
   (define (join t1 t2) #`(U #,t1 #,t2))
   (current-join join))

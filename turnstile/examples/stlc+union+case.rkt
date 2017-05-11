@@ -31,7 +31,7 @@
    (num-args-fail-msg #'e_fn #'[τ_in ...] #'[e_arg ...])
    [⊢ [e_arg ≫ e_arg- ⇐ : τ_in] ...]
    --------
-   [⊢ [_ ≫ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]]]
+   [⊢ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]]
   [(_ e_fn e_arg ...) ≫
    [⊢ [e_fn ≫ e_fn- ⇒ : (~case-> ~! . (~and ty_fns ((~→ . _) ...)))]]
    [⊢ [e_arg ≫ e_arg- ⇒ : τ_arg] ...]
@@ -63,7 +63,7 @@
            (string-join (stx-map type->str τs_given) ", ")
            (string-join (map ~s (stx-map syntax->datum expressions)) ", ")))])
    --------
-   [⊢ [_ ≫ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]]])
+   [⊢ (#%app- e_fn- e_arg- ...) ⇒ : τ_out]])
 
 (begin-for-syntax
   (define (sub? t1 t2)
@@ -72,7 +72,7 @@
    ;; (define τ2 ((current-type-eval) t2))
     ;; (printf "t1 = ~a\n" (syntax->datum t1))
     ;; (printf "t2 = ~a\n" (syntax->datum t2))
-    (or 
+    (or
      ((current-type=?) t1 t2)
      (syntax-parse (list t1 t2)
        ; 2 U types, subtype = subset
@@ -100,4 +100,3 @@
   (define (subs? τs1 τs2)
     (and (stx-length=? τs1 τs2)
          (stx-andmap (current-sub?) τs1 τs2))))
-                   
