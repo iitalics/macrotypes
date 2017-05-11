@@ -42,20 +42,8 @@
            (only-in racket/format ~a)
            (only-in racket/string string-join)
            (for-syntax racket/base syntax/parse racket/syntax)
-           (for-template racket/base))
-
-  (define (infer es #:ctx ctx)
-    (syntax-parse ctx
-      [([x tags ...] ...)
-       #:with (e ...) es
-       (syntax-parse (local-expand #'(lambda (x ...)
-                                       (#%expression e) ...)
-                                   'expression
-                                   '())
-         [((~literal #%plain-lambda)
-           (x- ...)
-           ((~literal #%expression) e-) ...)
-          #'(() (x- ...) (e- ...) ())])]))
+           (for-template racket/base
+                         (prefix-in MT: macrotypes/typecheck)))
 
   (provide typechecking
            tags⇐ tags⇒
@@ -211,7 +199,7 @@
                         in-keyss out-keyss
                         #%ins #%outs)
     (syntax-parse stx
-      [(xs es/tags)
+      [(ctx estags)
        ; attach properties
        #:with es+ (map (λ (stx dep in-keys out-keys)
                          (stx-map/depth
@@ -225,26 +213,62 @@
                                                out-keys
                                                (syntax-e #'(tags ...))))])
                           dep stx))
-                       (syntax->list #'es/tags)
+                       (syntax->list #'estags)
                        es-deps
                        in-keyss
                        out-keyss)
 
        ; flatten and infer
-       #:with xs/flat  (append* (map stx-flat/depth
-                                     xs-deps
-                                     (syntax->list #'xs)))
+       #:with ctx/flat  (append* (map stx-flat/depth
+                                      xs-deps
+                                      (syntax->list #'ctx)))
        #:with es+/flat (append* (map stx-flat/depth
                                      es-deps
                                      (syntax->list #'es+)))
-       #:with (_ xs-/flat
-                 es-/flat _) (infer #'es+/flat
-                                    #:ctx #'xs/flat)
+       #:with (_ xs-/flat estags-/flat) (infer/check-tags #%ins
+                                                          #%outs
+                                                          #'es+/flat
+                                                          #:ctx #'ctx/flat)
 
        ; unflatten
-       #:with xs- (stx-unflat/depths xs-deps #'xs-/flat  #'xs)
-       #:with es- (stx-unflat/depths es-deps #'es-/flat #'es/tags)
-       #'(xs- es-)]))
+       #:with xs-     (stx-unflat/depths xs-deps #'xs-/flat     #'ctx)
+       #:with estags- (stx-unflat/depths es-deps #'estags-/flat #'estags)
+       #'(xs- estags-)]))
+
+
+  (define (infer/check-tags #%ins #%outs
+                            es
+                            #:ctx [ctx '()]
+                            #:tvctx [tvctx '()])
+    (define (check e- e)
+      (cond
+        [(and (null? (syntax-property e- #%ins))
+              (equal? (syntax-property e #%outs)
+                      (syntax-property e- #%outs)))
+         (cons e- (map (lambda (k) (syntax-property e- k))
+                       (syntax-property e #%outs)))]
+
+        [else
+         (raise-syntax-error #f
+                             (format (string-append "did not correctly infer here"
+                                                    "\n expected ⇐ tags: ~a"
+                                                    "\n expected ⇒ tags: ~a"
+                                                    "\n ins:  ~a"
+                                                    "\n outs: ~a")
+                                     (syntax-property e #%ins)
+                                     (syntax-property e #%outs)
+                                     (syntax-property e- #%ins)
+                                     (syntax-property e- #%outs))
+                             e)]))
+
+    (syntax-parse (MT:infer es
+                         #:ctx ctx
+                         #:tvctx tvctx
+                         #:tag #%outs)
+      [(tvs- xs- es- _)
+       #:with estags- (stx-map check #'es- es)
+       (list #'tvs- #'xs- #'estags-)]))
+
 
 
 
@@ -257,19 +281,19 @@
                    ooo:ellipsis ...)
              ; --
              #:with depth (length (syntax-e #'(ooo ...)))
-             #:with xs/es  (nest/ooo #'((ce.xs ...)  (cl.e+tags ...))
-                                     #'(ooo ...))
-             #:with xs/es- (nest/ooo #'((ce.xs- ...) (cl.e- ...))
-                                     #'(ooo ...))
+             #:with xs/estags  (nest/ooo #'((ce.xs ...)  (cl.e+tags ...))
+                                         #'(ooo ...))
+             #:with xs/estags- (nest/ooo #'((ce.xs- ...) (cl.e-+tags ...))
+                                         #'(ooo ...))
              ;
              #:with [norm ...]
-             #`[#:with xs/es- (expands/depth #'xs/es
-                                             'depth
-                                             '(ce.depth ...)
-                                             '(cl.depth ...)
-                                             '(cl.in-keys ...)
-                                             '(cl.out-keys ...)
-                                             '#,(inputs-list-property) '#,(outputs-list-property))
+             #`[#:with xs/estags- (expands/depth #'xs/estags
+                                                 'depth
+                                                 '(ce.depth ...)
+                                                 '(cl.depth ...)
+                                                 '(cl.in-keys ...)
+                                                 '(cl.out-keys ...)
+                                                 '#,(inputs-list-property) '#,(outputs-list-property))
                 ]))
 
 
@@ -298,8 +322,8 @@
              #:with depth (length (syntax-e #'(ooo ...)))
              #:with e+tags (nest/ooo #'(template in.exprs ...)
                                      #'(ooo ...))
-             #:with e- (nest/ooo #'pattern
-                                 #'(ooo ...))))
+             #:with e-+tags (nest/ooo #'(pattern out.exprs ...)
+                                      #'(ooo ...))))
 
   )
 
@@ -307,6 +331,9 @@
          (for-meta 2 'syntax-classes)
          (for-syntax racket/base syntax/parse racket/syntax))
 
+(require (only-in macrotypes/typecheck
+                  define-base-types
+                  define-type-constructor))
 
 
 (begin-for-syntax
@@ -336,14 +363,13 @@
      #'(define-typed-syntax name
          [(_ . pats) . r])]))
 
-(define-typed-syntax nests
-  [(_ [e ...] [x ...]) ≫
-   [[x ≫ x- : X] ... ⊢
-    [e ≫ e-
-         (⇐ expected-type B)
-         (⇒ : T)
-         (⇒ efs E)] ...]
-   --------
-   #''(==> (x- ...) e- ...)])
 
-(nests [1 2] [a b])
+(define-base-types Int)
+
+(define-typed-syntax typed-lambda
+  [(_ (x) e) ≫
+   [[x ≫ x- : Int] ⊢ [e ≫ e-]]
+   --------
+   #'e-])
+
+(typed-lambda (x) 3)
