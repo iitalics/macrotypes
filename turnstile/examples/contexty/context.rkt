@@ -1,13 +1,16 @@
 #lang racket
+(require macrotypes/typecheck)
 
 (begin-for-syntax
   (require racket/base
            racket/match
+           (only-in racket/syntax generate-temporary)
            (only-in racket/function negate)
            (only-in racket/list takef dropf)
            syntax/parse
-           (for-syntax racket/base
-                       syntax/parse))
+           (for-syntax syntax/parse))
+
+  (provide (all-defined-out))
 
 
   (define the-context (make-parameter '()))
@@ -53,5 +56,6 @@
     (syntax-parser
       [(_ patn)
        #'(set-context! (context-before patn))]))
+
 
   )
