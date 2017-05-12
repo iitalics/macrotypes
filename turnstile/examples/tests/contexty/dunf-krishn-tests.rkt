@@ -1,7 +1,7 @@
 #lang racket
 (require macrotypes/typecheck
          (except-in "../../contexty/dunf-krishn.rkt"
-                    #%module-begin #;#%app #%top-interaction))
+                    #;#%app))
 
 (begin-for-syntax
   (require racket/base
@@ -36,5 +36,19 @@
   (check-false (subtype M N))
   (check-true (subtype ((current-type-eval) #`(→ #,M #,N))
                        ((current-type-eval) #`(→ #,N #,M))))
+
+
+  ; test well-formed?
+  (let* ([α (make-exis)]
+         [α->N ((current-type-eval) #`(→ #,α Nat))]
+         [Id ((current-type-eval) #'(∀ (X) (→ X X)))])
+    (check-not-false (well-formed? α (list α)))
+    (check-false     (well-formed? α (list)))
+
+    (check-not-false (well-formed? Id (list)))
+    (syntax-parse Id
+      [(~∀ (X) τ)
+       (check-not-false (well-formed? #'τ (list α #'X)))
+       (check-false (well-formed? #'τ (list)))]))
 
   )
