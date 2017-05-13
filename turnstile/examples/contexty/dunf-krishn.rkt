@@ -169,13 +169,6 @@
       [_ #f]))
 
 
-  (struct exn:fail:inst-subtype exn:fail:syntax (var rhs))
-  (define (raise-inst-subtype-error var rhs #:src src)
-    (raise (exn:fail:inst-subtype "cannot instantiate"
-                                  (current-continuation-marks)
-                                  (list src)
-                                  var rhs)))
-
   ; implement the instantiation algorithm [Γ ⊢ α <:= A ⊣ Δ] using
   ; global state to handle contexts. instantiate so that subtyping
   ; is determined by dir, e.g.
@@ -217,6 +210,14 @@
        (context-pop-until! (~Marker (~Exis= #'β)))]
 
       [_ (raise-inst-subtype-error var t #:src src)]))
+
+  ; exception to be raised by instantiation failure
+  (struct exn:fail:inst-subtype exn:fail:syntax (var rhs))
+  (define (raise-inst-subtype-error var rhs #:src src)
+    (raise (exn:fail:inst-subtype "cannot instantiate"
+                                  (current-continuation-marks)
+                                  (list src)
+                                  var rhs)))
 
 
   (define T ((current-type-eval) #'(∀ (X) X)))
