@@ -35,7 +35,8 @@
            syntax/parse
            (for-syntax syntax/parse))
 
-  (provide make-exis ~Exis= Exis=?
+  (provide make-bvar ~bvar= bvar=?
+           make-exis ~Exis= Exis=?
            ctx-subst
            well-formed?
            subtype
@@ -43,14 +44,43 @@
            (struct-out exn:fail:inst-subtype))
 
 
+  ;;; this bvar stuff is used because I need to be able to keep track of identifiers
+  ;;; bound in (∀ (X) ...), but when you (current-type-eval) an identifier, it sometimes
+  ;;; loses its scope and no longer bound-identifier=? with the original. so we want the
+  ;;; property of bound-identifier=? in that it can discriminate identifiers with the same
+  ;;; name, but we don't actually care about the scoping details. it helps that in this
+  ;;; algorithm (Dunfield-Krishnaswami), ∀'s are never synthesized; they're only destructured
+
+  ; puts a unique #%bvar prop on the identifier so that it can be kept
+  ; track of (bvar=?) even after being eval'd
+  (define (make-bvar id)
+    (mk-type (syntax-property id '#%bvar (gensym (syntax-e #'id)))))
+
+  ; returns #t if x and y are both identifiers that have the same #%bvar prop
+  (define (bvar=? x y)
+    (and (identifier? x) (identifier? y)
+         (eq? (syntax-property x '#%bvar)
+              (syntax-property y '#%bvar))))
+
+  ; pattern expander that only matches identifiers that have the same
+  ; #%bvar property as the given expression
+  (define-syntax ~bvar=
+    (pattern-expander
+     (syntax-parser
+       [(_ bv-expr)
+        #:with Y (generate-temporary #'Y)
+        #'(~and (~var Y identifier)
+                (~fail #:unless (bvar=? bv-expr #'Y)))])))
+
+
+
   ; generates a unique new exis var
-  (define (make-exis)
-    (with-syntax ([qs (mk-type #`(quote #,(gensym)))])
+  (define (make-exis [pre 'exis])
+    (with-syntax ([qs (mk-type #`(quote #,(gensym pre)))])
       ((current-type-eval) #'(Exis qs))))
 
-
-  ; pattern expander that takes an expression and only matches
-  ; exis vars that are the same as the given
+  ; pattern expander that only matches exis vars that are the same as
+  ; the given expression
   (define-syntax ~Exis=
     (pattern-expander
      (syntax-parser
@@ -71,15 +101,6 @@
       [(~Exis= α1) #t]
       [_ #f]))
 
-  ; pattern expander that matches identifiers that are bound-identifier=? the
-  ; given identifier expression
-  (define-syntax ~bound-id=
-    (pattern-expander
-     (syntax-parser
-       [(_ id-expr)
-        #:with X (generate-temporary #'X)
-        #'(~and X:id
-                (~fail #:unless (bound-identifier=? #'X id-expr)))])))
 
 
   ; apply substitutions from ctx to replace exis vars
@@ -155,7 +176,8 @@
             (subtype (ctx-subst #'A2)
                      (ctx-subst #'B2)))]
 
-      [(A (~∀ (X) B))
+      ; FIXME
+      #;[(A (~∀ (X) B))
        (context-push! #'X)
        (begin0 (subtype #'A #'B)
          (context-pop-until! (~bound-id= #'X)))]
@@ -198,7 +220,8 @@
        (inst-subtype #'α1 dir* #'A1 #:src src)
        (inst-subtype #'α2 dir (ctx-subst #'A2) #:src src)]
 
-      [(~∀ (X) A) #:when (eq? dir '<:)
+      ; FIXME
+      #;[(~∀ (X) A) #:when (eq? dir '<:)
        (context-push! #'X)
        (inst-subtype #'α '<: #'A)
        (context-pop-until! (~bound-id= #'X))]
@@ -218,19 +241,4 @@
                                   (current-continuation-marks)
                                   (list src)
                                   var rhs)))
-
-
-  (define T ((current-type-eval) #'(∀ (X) X)))
-  (define x (syntax-parse T
-              [(~∀ (Y) _) #'Y]))
-
-  (displayln (bound-identifier=? x ((current-type-eval)
-                                    (syntax-property x 'context-var 'yes!))))
-
-  (syntax-parse ((current-type-eval) #`(Marker #,(syntax-property (mk-type x)
-                                                                  'context-var 'yes!)))
-    [(~Marker Y)
-     (displayln (bound-identifier=? x #'Y))
-     (displayln (syntax-property #'Y 'context-var))])
-
   )

@@ -20,11 +20,24 @@
   (define U ((current-type-eval) #'Unit))
 
 
+  ; test make-bvar, bvar=?, ~bvar=
+  (syntax-parse ((current-type-eval) #'(∀ (ABC) (∀ (DEF) (→ ABC DEF))))
+    [(~∀ (X) (~∀ (Y) _))
+     #:with x (make-bvar #'X)
+     #:with y (make-bvar #'Y)
+     (check-false (bvar=? #'x #'y))
+     (syntax-parse ((current-type-eval) #'(→ x y))
+       [(~→ x- (~bvar= #'y))
+        (check-true (bvar=? #'x #'x-))
+        (check-false (bvar=? #'y #'x-))]
+       [_ (fail "~bvar= failed")])])
+
+
   ; test Exis=? and ~Exis=
   (let ([α (make-exis)]
         [β (make-exis)])
-    (check-not-false (Exis=? α α))
-    (check-not-false (Exis=? α ((current-type-eval) α)))
+    (check-true (Exis=? α α))
+    (check-true (Exis=? α ((current-type-eval) α)))
     (check-false (Exis=? α β))
     (syntax-parse α
       [(~Exis= β) (fail "matched different exis vars")]
@@ -89,8 +102,9 @@
      (check-false (subtype #'X #'Y))
      (check-true (subtype #'X #'X))])
 
-  (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
-  (check-equal? '() (the-context))
+  #;(parameterize ([the-context '()])
+    (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
+    (check-equal? '() (the-context)))
 
   (with-syntax ([α (make-exis)]
                 [β (make-exis)])
@@ -134,7 +148,7 @@
         [_ (fail "wrong context form")]))
 
     ; assignment to ∀'s
-    (for ([dir '(<:)])
+    #;(for ([dir '(<:)])
       (parameterize ([the-context (list #'α)])
         (inst-subtype #'α dir ((current-type-eval) #'(∀ (X) Int)))
         (syntax-parse (the-context)
