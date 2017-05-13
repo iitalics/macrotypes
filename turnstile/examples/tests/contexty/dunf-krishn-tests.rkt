@@ -62,7 +62,7 @@
          [Id ((current-type-eval) #'(∀ (X) (→ X X)))])
     (check-not-false (well-formed? α (list α)))
     (check-false     (well-formed? α (list)))
-    (check-not-false (well-formed? Id (list)))
+    (check-false     (well-formed? Id (list)))
     (syntax-parse Id
       [(~∀ (X) τ)
        (check-not-false (well-formed? #'τ (list α #'X)))
@@ -131,6 +131,26 @@
          (check-true (Exis=? #'α= #'α1))
          (check-true (Exis=? #'β_arg #'α1))
          (check-true (Exis=? #'β_ret #'α2))]
-        [_ (fail "wrong context form")])))
+        [_ (fail "wrong context form")]))
+
+    ; assignment to ∀'s
+    (for ([dir '(<:)])
+      (parameterize ([the-context (list #'α)])
+        (inst-subtype #'α dir ((current-type-eval) #'(∀ (X) Int)))
+        (syntax-parse (the-context)
+          [{(~Exis:= _ _)}
+           (check-true #t)]
+          [{(~Exis _)}
+           (fail "no assignment done")]
+          [{_}
+           (fail "something else?")]
+          [{}
+           (fail "it's gone :o")])))
+
+    (check-exn exn:fail:inst-subtype?
+               (lambda ()
+                 ; cannot assign variable introduced in subtype
+                 (parameterize ([the-context (list #'α)])
+                   (inst-subtype #'α '<: ((current-type-eval) #'(∀ (X) X)))))))
 
   )

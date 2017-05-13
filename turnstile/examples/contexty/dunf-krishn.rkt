@@ -21,13 +21,14 @@
 ; context elements:
 ; exis var assignment
 (define-type-constructor Exis:= #:arity = 2)
-; marking
-(define-type-constructor Marking #:arity = 1)
+; markers
+(define-type-constructor Marker #:arity >= 1)
 
 
 (provide (type-out Unit Nat Int Num → ∀
                    Exis
-                   Exis:= Marking))
+                   Exis:=
+                   Marker))
 
 (begin-for-syntax
   (require racket/base
@@ -38,7 +39,8 @@
            ctx-subst
            well-formed?
            subtype
-           inst-subtype)
+           inst-subtype
+           (struct-out exn:fail:inst-subtype))
 
 
   ; generates a unique new exis var
@@ -109,7 +111,7 @@
       [_ t]))
 
 
-  ; checks if the type is well formed under the context
+  ; checks if the type is a well formed monotype under the context
   ; this is the algorithm [Γ ⊢ τ]
   (define (well-formed? t [ctx (the-context)])
     (syntax-parse t
@@ -129,9 +131,7 @@
                 [_ #f])
               ctx)]
 
-      [(~∀ (X) A)
-       (well-formed? #'A (cons #'X ctx))]
-
+      [(~∀ (X) _) #f]
       [_ #t]))
 
 
@@ -141,16 +141,12 @@
     (syntax-parse (list t1 t2)
       [(X:id Y:id)
        (bound-identifier=? #'X #'Y)]
-
-      [(A B)
-       #:when (type=? #'A #'B)
+      [(A B) #:when (type=? #'A #'B)
        #t]
-
       [(~or (~Nat  ~Int)
             (~Int  ~Num)
             (~Nat  ~Num))
        #t]
-
       [((~and (~Exis _) α1) (~Exis= #'α1))
        #t]
 
@@ -172,6 +168,13 @@
 
       [_ #f]))
 
+
+  (struct exn:fail:inst-subtype exn:fail:syntax (var rhs))
+  (define (raise-inst-subtype-error var rhs #:src src)
+    (raise (exn:fail:inst-subtype "cannot instantiate"
+                                  (current-continuation-marks)
+                                  (list src)
+                                  var rhs)))
 
   ; implement the instantiation algorithm [Γ ⊢ α <:= A ⊣ Δ] using
   ; global state to handle contexts. instantiate so that subtyping
@@ -202,11 +205,31 @@
        (inst-subtype #'α1 dir* #'A1 #:src src)
        (inst-subtype #'α2 dir (ctx-subst #'A2) #:src src)]
 
+      [(~∀ (X) A) #:when (eq? dir '<:)
+       (context-push! #'X)
+       (inst-subtype #'α '<: #'A)
+       (context-pop-until! (~bound-id= #'X))]
 
-      [_
-       (raise-syntax-error 'instantiation
-                           "cannot instantiate"
-                           src)]))
+      [(~∀ (X) A) #:when (eq? dir ':>)
+       #:with β (make-exis)
+       (context-push! #'(Marker β) #'β)
+       (inst-subtype #'α ':> (subst #'β #'X #'A))
+       (context-pop-until! (~Marker (~Exis= #'β)))]
 
+      [_ (raise-inst-subtype-error var t #:src src)]))
+
+
+  (define T ((current-type-eval) #'(∀ (X) X)))
+  (define x (syntax-parse T
+              [(~∀ (Y) _) #'Y]))
+
+  (displayln (bound-identifier=? x ((current-type-eval)
+                                    (syntax-property x 'context-var 'yes!))))
+
+  (syntax-parse ((current-type-eval) #`(Marker #,(syntax-property (mk-type x)
+                                                                  'context-var 'yes!)))
+    [(~Marker Y)
+     (displayln (bound-identifier=? x #'Y))
+     (displayln (syntax-property #'Y 'context-var))])
 
   )
