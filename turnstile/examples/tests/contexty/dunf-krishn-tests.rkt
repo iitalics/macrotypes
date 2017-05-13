@@ -56,6 +56,20 @@
                              (~do (check bound-identifier=? #'Y #'Z))))])))
 
 
+  ; test well-formed?
+  (let* ([α (make-exis)]
+         [α->N ((current-type-eval) #`(→ #,α Nat))]
+         [Id ((current-type-eval) #'(∀ (X) (→ X X)))])
+    (check-not-false (well-formed? α (list α)))
+    (check-false     (well-formed? α (list)))
+
+    (check-not-false (well-formed? Id (list)))
+    (syntax-parse Id
+      [(~∀ (X) τ)
+       (check-not-false (well-formed? #'τ (list α #'X)))
+       (check-false (well-formed? #'τ (list)))]))
+
+
   ; test subtype
   (check-true (subtype I I))
   (check-true (subtype N N))
@@ -69,20 +83,6 @@
                        ((current-type-eval) #`(→ #,N #,M))))
   (check-false (subtype ((current-type-eval) #`(→ #,I #,I))
                         ((current-type-eval) #`(→ #,M #,N))))
-
-
-  ; test well-formed?
-  (let* ([α (make-exis)]
-         [α->N ((current-type-eval) #`(→ #,α Nat))]
-         [Id ((current-type-eval) #'(∀ (X) (→ X X)))])
-    (check-not-false (well-formed? α (list α)))
-    (check-false     (well-formed? α (list)))
-
-    (check-not-false (well-formed? Id (list)))
-    (syntax-parse Id
-      [(~∀ (X) τ)
-       (check-not-false (well-formed? #'τ (list α #'X)))
-       (check-false (well-formed? #'τ (list)))]))
 
 
   ; test inst-subtype

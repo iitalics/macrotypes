@@ -99,28 +99,6 @@
       [_ t]))
 
 
-  ; implements the subtyping algorithm [Γ ⊢ A <: B ⊣ Δ] using
-  ; global state to handle contexts. returns #t if t1 can be make a subtype of t2
-  (define (subtype t1 t2)
-    (syntax-parse (list t1 t2)
-      [(A B)
-       #:when (type=? #'A #'B)
-       #t]
-      [(~or (~Nat  ~Int)
-            (~Int  ~Num)
-            (~Nat  ~Num))
-       #t]
-
-      [((~and (~Exis _) α1) (~Exis= #'α1))
-       #t]
-
-      [((~→ A1 A2) (~→ B1 B2))
-       (and (subtype #'B1 #'A1)
-            (subtype #'A2 #'B2))]
-
-      [_ #f]))
-
-
   ; checks if the type is well formed under the context segment
   ; which is the algorithm [Γ ⊢ τ]
   (define (well-formed? t [ctx (the-context)])
@@ -142,6 +120,28 @@
        (well-formed? #'A (cons #'X ctx))]
 
       [_ #t]))
+
+
+  ; implements the subtyping algorithm [Γ ⊢ A <: B ⊣ Δ] using
+  ; global state to handle contexts. returns #t if t1 can be make a subtype of t2
+  (define (subtype t1 t2)
+    (syntax-parse (list t1 t2)
+      [(A B)
+       #:when (type=? #'A #'B)
+       #t]
+      [(~or (~Nat  ~Int)
+            (~Int  ~Num)
+            (~Nat  ~Num))
+       #t]
+
+      [((~and (~Exis _) α1) (~Exis= #'α1))
+       #t]
+
+      [((~→ A1 A2) (~→ B1 B2))
+       (and (subtype #'B1 #'A1)
+            (subtype #'A2 #'B2))]
+
+      [_ #f]))
 
 
   ; implement the instantiation algorithm [Γ ⊢ α <:= A ⊣ Δ] using
