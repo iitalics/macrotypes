@@ -84,6 +84,12 @@
   (check-false (subtype ((current-type-eval) #`(→ #,I #,I))
                         ((current-type-eval) #`(→ #,M #,N))))
 
+  (syntax-parse (list ((current-type-eval) #'(∀ (X) X))
+                      ((current-type-eval) #'(∀ (X) X)))
+    [((~∀ (_) X) (~∀ (_) Y))
+     (check-false (subtype #'X #'Y))
+     (check-true (subtype #'X #'X))])
+
 
   ; test inst-subtype
   (let* ([α (make-exis)]

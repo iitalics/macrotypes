@@ -103,7 +103,10 @@
   ; which is the algorithm [Γ ⊢ τ]
   (define (well-formed? t [ctx (the-context)])
     (syntax-parse t
-      [X:id (member #'X ctx type=?)]
+      [X:id (memf (lambda (y)
+                    (and (identifier? y)
+                         (bound-identifier=? #'X y)))
+                  ctx)]
 
       [(~→ A B)
        (and (well-formed? #'A ctx)
@@ -126,9 +129,13 @@
   ; global state to handle contexts. returns #t if t1 can be make a subtype of t2
   (define (subtype t1 t2)
     (syntax-parse (list t1 t2)
+      [(X:id Y:id)
+       (bound-identifier=? #'X #'Y)]
+
       [(A B)
        #:when (type=? #'A #'B)
        #t]
+
       [(~or (~Nat  ~Int)
             (~Int  ~Num)
             (~Nat  ~Num))
