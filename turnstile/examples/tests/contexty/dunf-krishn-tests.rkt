@@ -109,10 +109,7 @@
   (check-false (subtype ((current-type-eval) #`(→ Int Int))
                         ((current-type-eval) #`(→ Num Nat))))
 
-  (parameterize ([the-context '()])
-    (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
-    (check-equal? '() (the-context)))
-
+  ; subtyping with exis vars
   (with-syntax ([α (make-exis)]
                 [β (make-exis)])
     (parameterize ([the-context (list #'α)])
@@ -120,6 +117,23 @@
       (check-syntax (the-context)
                     {(~Exis:= (~Exis= #'α) ~Int)})))
 
+  ; subtyping with ∀'s that aren't bounded in the body
+  (parameterize ([the-context '()])
+    ; the marker confirms that the context was returned to normal
+    ; without being flushed entirely
+    (context-push! #'(Marker Int))
+    ; TODO: fix this test
+    (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
+    (check-syntax (the-context) {(~Marker ~Int)})
+    (check-true (subtype ((current-type-eval) #'(∀ (X) Int)) M))
+    (check-syntax (the-context) {(~Marker ~Int)}))
+
+  ; subtyping with ∀'s that ARE bounded
+  (parameterize ([the-context '()])
+    (check-true (subtype ((current-type-eval) #'(→ Int Int))
+                         ((current-type-eval) #'(∀ (X) (→ Int X)))))
+    (check-true (subtype ((current-type-eval) #'(∀ (X) (→ X Int)))
+                         ((current-type-eval) #'(→ Int Int)))))
 
   ; test inst-subtype
   (with-syntax ([α (make-exis)]

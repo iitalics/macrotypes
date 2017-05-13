@@ -185,6 +185,13 @@
        (begin0 (subtype #'A #'B-)
          (context-pop-until! (~bvar= #'bX)))]
 
+      [((~∀ (X) A) B)
+       #:with α (make-exis)
+       #:with A- (subst #'α #'X #'A)
+       (context-push! #'(Marker α) #'α)
+       (begin0 (subtype #'A- #'B)
+         (context-pop-until! (~Marker (~Exis= #'α))))]
+
       ; TODO: occurs?
       [((~and α (~Exis _)) A)
        (inst-subtype #'α '<: #'A #:src src) #t]
