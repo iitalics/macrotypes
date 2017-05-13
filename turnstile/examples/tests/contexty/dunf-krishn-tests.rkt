@@ -21,13 +21,17 @@
 
 
   ; test make-bvar, bvar=?, ~bvar=
-  (syntax-parse ((current-type-eval) #'(∀ (ABC) (∀ (DEF) (→ ABC DEF))))
+  (syntax-parse ((current-type-eval) #'(∀ (ABC) (∀ (ABC) Unit)))
     [(~∀ (X) (~∀ (Y) _))
      #:with x (make-bvar #'X)
      #:with y (make-bvar #'Y)
+     (check-false (bound-identifier=? #'x #'y))
      (check-false (bvar=? #'x #'y))
      (syntax-parse ((current-type-eval) #'(→ x y))
        [(~→ x- (~bvar= #'y))
+        ; this is the problematic situation:
+        (check-false (bound-identifier=? #'x #'x-))
+        ; this is the solution:
         (check-true (bvar=? #'x #'x-))
         (check-false (bvar=? #'y #'x-))]
        [_ (fail "~bvar= failed")])])
