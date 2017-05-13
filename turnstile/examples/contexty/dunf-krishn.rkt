@@ -52,7 +52,8 @@
     (pattern-expander
      (syntax-parser
        [(_ exis-expr)
-        #:with tmp (generate-temporary)
+        #:with s1 (generate-temporary #'s)
+        #:with s2 (generate-temporary #'s)
         #'(~and (~Exis ((~literal quote) s1))
                 (~fail #:unless
                        (syntax-parse exis-expr
