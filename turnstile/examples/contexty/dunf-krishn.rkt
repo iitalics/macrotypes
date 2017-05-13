@@ -25,7 +25,9 @@
 (define-type-constructor Marking #:arity = 1)
 
 
-(provide (type-out Unit Nat Int Num Exis → ∀))
+(provide (type-out Unit Nat Int Num → ∀
+                   Exis
+                   Exis:= Marking))
 
 (begin-for-syntax
   (require racket/base
@@ -34,7 +36,8 @@
 
   (provide make-exis ~Exis= Exis=?
            subtype
-           well-formed?)
+           well-formed?
+           inst-subtype)
 
 
   ; generates a unique new exis var
@@ -72,7 +75,6 @@
       [(A B)
        #:when (type=? #'A #'B)
        #t]
-
       [(~or (~Nat  ~Int)
             (~Int  ~Num)
             (~Nat  ~Num))
@@ -86,25 +88,6 @@
             (subtype #'A2 #'B2))]
 
       [_ #f]))
-
-
-  ; implement the instantiation algorithm [Γ ⊢ α <:= A ⊣ Δ] using
-  ; global state to handle contexts. instantiate so that subtyping
-  ; is determined by dir, e.g.
-  ;   if dir = '<: then α <: t
-  ;   if dir = ':> then t <: α
-  (define (inst-subtype var dir t #:src [src t])
-    (define/with-syntax α var)
-    (syntax-parse t
-      [τ
-       #:when (well-formed? #'τ (context-before (~Exis= #'α)))
-       (context-replace! (~Exis= #'α)
-                         #'(α . Exis:= . τ))]
-
-      [_
-       (raise-syntax-error 'instantiation
-                           "cannot instantiate"
-                           src)]))
 
 
   ; checks if the type is well formed under the context segment
@@ -128,6 +111,30 @@
        (well-formed? #'A (cons #'X ctx))]
 
       [_ #t]))
+
+
+  ; implement the instantiation algorithm [Γ ⊢ α <:= A ⊣ Δ] using
+  ; global state to handle contexts. instantiate so that subtyping
+  ; is determined by dir, e.g.
+  ;   if dir = '<: then α <: t
+  ;   if dir = ':> then t <: α
+  (define (inst-subtype var dir t #:src [src t])
+    (define/with-syntax α var)
+    (syntax-parse t
+      [τ
+       #:when (well-formed? #'τ (context-before (~Exis= #'α)))
+       (context-replace! (~Exis= #'α)
+                         #'(α . Exis:= . τ))]
+
+      [(~and β (~Exis _))
+       #:when (member #'β (context-after (~Exis= #'α)) Exis=?)
+       (context-replace! (~Exis= #'β)
+                         #'(β . Exis:= . α))]
+
+      [_
+       (raise-syntax-error 'instantiation
+                           "cannot instantiate"
+                           src)]))
 
 
   )

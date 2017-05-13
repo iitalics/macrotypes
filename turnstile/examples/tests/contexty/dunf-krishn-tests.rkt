@@ -1,7 +1,8 @@
 #lang racket
 (require macrotypes/typecheck
          (except-in "../../contexty/dunf-krishn.rkt"
-                    #;#%app))
+                    #;#%app)
+         "../../contexty/context.rkt")
 
 (begin-for-syntax
   (require racket/base
@@ -51,4 +52,19 @@
        (check-not-false (well-formed? #'τ (list α #'X)))
        (check-false (well-formed? #'τ (list)))]))
 
+  ; test inst-subtype
+  (let* ([α (make-exis)]
+         [β (make-exis)])
+    ; assignment
+    (parameterize ([the-context (list α β)])
+      (inst-subtype α '<: β)
+      (check-true (syntax-parse (the-context)
+                    [{(~Exis:= (~Exis= α) (~Exis= β)) (~Exis= β)} #t]
+                    [_ #f])))
+    ; always assigns chronologically; note we switch β <: α but resulting context is same
+    (parameterize ([the-context (list α β)])
+      (inst-subtype β '<: α)
+      (check-true (syntax-parse (the-context)
+                    [{(~Exis:= (~Exis= α) (~Exis= β)) (~Exis= β)} #t]
+                    [_ #f]))))
   )
