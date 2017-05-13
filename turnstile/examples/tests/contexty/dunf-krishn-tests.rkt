@@ -19,6 +19,7 @@
   (define M ((current-type-eval) #'Num))
   (define U ((current-type-eval) #'Unit))
 
+
   ; test Exis=? and ~Exis=
   (let ([α (make-exis)]
         [β (make-exis)])
@@ -34,7 +35,17 @@
   ; test ctx-subst
   (with-syntax ([α (make-exis)]
                 [β (make-exis)])
-    (void))
+    ; single substitutions
+    (parameterize ([the-context '()])
+      (context-push! #'(β . Exis:= . Unit) #'α)
+      (check-syntax (ctx-subst #'α) (~Exis= #'α))
+      (check-syntax (ctx-subst #'β) ~Unit))
+    ; chain substitutions
+    (parameterize ([the-context '()])
+      (context-push! #'(β . Exis:= . Nat)
+                     #'(α . Exis:= . (→ Unit β)))
+      (check-syntax (ctx-subst #'α) (~→ ~Unit ~Nat))))
+
 
   ; test subtype
   (check-true (subtype I I))

@@ -35,8 +35,9 @@
            (for-syntax syntax/parse))
 
   (provide make-exis ~Exis= Exis=?
-           subtype
+           ctx-subst
            well-formed?
+           subtype
            inst-subtype)
 
 
@@ -67,6 +68,35 @@
     (syntax-parse α2
       [(~Exis= α1) #t]
       [_ #f]))
+
+
+  ; apply substitutions from ctx to replace exis vars
+  ; according to Exis:= entries in the context
+  (define (ctx-subst t [ctx (the-context)])
+    (syntax-parse t
+      [(~and α (~Exis _))
+       (let search ([ctx ctx])
+         (cond
+           [(null? ctx) t]
+           [else
+            (syntax-parse (car ctx)
+              [((~Exis= #'α) . ~Exis:= . A) (ctx-subst #'A (cdr ctx))]
+              [_ (search (cdr ctx))])]))]
+
+      [(~∀ (X) A)
+       #:with B (ctx-subst #'A ctx)
+       ; TODO: is there a proper way to transfer syntax properties?
+       ; maybe a (type-map f τ) function would be helpful
+       ((current-type-eval) (syntax/loc t
+                              (∀ (X) B)))]
+
+      [(~→ A B)
+       #:with A- (ctx-subst #'A ctx)
+       #:with B- (ctx-subst #'B ctx)
+       ((current-type-eval) (syntax/loc t
+                              (→ A- B-)))]
+
+      [_ t]))
 
 
   ; implements the subtyping algorithm [Γ ⊢ A <: B ⊣ Δ] using
