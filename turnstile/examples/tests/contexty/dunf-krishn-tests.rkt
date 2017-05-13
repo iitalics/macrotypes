@@ -44,7 +44,16 @@
     (parameterize ([the-context '()])
       (context-push! #'(β . Exis:= . Nat)
                      #'(α . Exis:= . (→ Unit β)))
-      (check-syntax (ctx-subst #'α) (~→ ~Unit ~Nat))))
+      (check-syntax (ctx-subst #'α) (~→ ~Unit ~Nat)))
+    ; ∀ substitutions
+    (parameterize ([the-context '()])
+      (define T ((current-type-eval) #'(∀ (X) α)))
+      (syntax-parse T
+        [(~∀ (X) I)
+         (context-push! #`(α . Exis:= . #,(mk-type #'X)))
+         (check-syntax (ctx-subst T)
+                       (~and (~∀ (Y:id) Z:id)
+                             (~do (check bound-identifier=? #'Y #'Z))))])))
 
 
   ; test subtype
