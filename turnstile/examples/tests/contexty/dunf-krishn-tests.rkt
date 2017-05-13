@@ -101,18 +101,36 @@
 
 
   ; test inst-subtype
-  (let* ([α (make-exis)]
-         [β (make-exis)])
+  (with-syntax ([α (make-exis)]
+                [β (make-exis)])
     ; assignment
-    (parameterize ([the-context (list α β)])
-      (inst-subtype α '<: β)
+    (parameterize ([the-context (list #'α #'β)])
+      (inst-subtype #'α '<: #'β)
       (check-syntax (the-context)
-                    {(~Exis:= (~Exis= α) (~Exis= β))
-                     (~Exis= β)}))
+                    {(~Exis:= (~Exis= #'α) (~Exis= #'β))
+                     (~Exis= #'β)}))
     ; always assigns chronologically; note we switch β <: α but resulting context is same
-    (parameterize ([the-context (list α β)])
-      (inst-subtype β '<: α)
+    (parameterize ([the-context (list #'α #'β)])
+      (inst-subtype #'β '<: #'α)
       (check-syntax (the-context)
-                    {(~Exis:= (~Exis= α) (~Exis= β))
-                     (~Exis= β)})))
+                    {(~Exis:= (~Exis= #'α) (~Exis= #'β))
+                     (~Exis= #'β)}))
+
+    ; assignment to → with nested vars in "wrong" order
+    (parameterize ([the-context (list #'α #'β)])
+      (inst-subtype #'β '<: ((current-type-eval) #'(→ α Int)))
+      ; BEFORE:  Γ = b, a
+      ; AFTER:   Δ = a2=Int, a1, b=a1->a2, a=a1
+      ; note that all assignments are to variables that occur before the assignment
+      ; yet the desired relation still holds
+      (syntax-parse (the-context)
+        [{(~Exis:= (~Exis= #'α) α=)
+          (~Exis:= (~Exis= #'β) (~→ β_arg β_ret))
+          (~and α1 (~Exis _))
+          (~Exis:= (~and α2 (~Exis _)) ~Int)}
+         (check-true (Exis=? #'α= #'α1))
+         (check-true (Exis=? #'β_arg #'α1))
+         (check-true (Exis=? #'β_ret #'α2))]
+        [_ (fail "wrong context form")])))
+
   )

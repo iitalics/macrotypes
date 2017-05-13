@@ -180,6 +180,7 @@
   ;   if dir = ':> then t <: α
   (define (inst-subtype var dir t #:src [src t])
     (define/with-syntax α var)
+    (define dir* (case dir [(<:) ':>] [(:>) '<:]))
     (syntax-parse t
       [τ
        #:when (well-formed? #'τ (context-before (~Exis= #'α)))
@@ -190,6 +191,17 @@
        #:when (member #'β (context-after (~Exis= #'α)) Exis=?)
        (context-replace! (~Exis= #'β)
                          #'(β . Exis:= . α))]
+
+      [(~→ A1 A2)
+       #:with α2 (make-exis)
+       #:with α1 (make-exis)
+       (context-replace! (~Exis= #'α)
+                         #'α2
+                         #'α1
+                         #'(α . Exis:= . (→ α1 α2)))
+       (inst-subtype #'α1 dir* #'A1 #:src src)
+       (inst-subtype #'α2 dir (ctx-subst #'A2) #:src src)]
+
 
       [_
        (raise-syntax-error 'instantiation
