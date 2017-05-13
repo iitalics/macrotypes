@@ -105,7 +105,7 @@
   (check-false (subtype ((current-type-eval) #`(→ Int Int))
                         ((current-type-eval) #`(→ Num Nat))))
 
-  #;(parameterize ([the-context '()])
+  (parameterize ([the-context '()])
     (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
     (check-equal? '() (the-context)))
 
@@ -151,23 +151,22 @@
         [_ (fail "wrong context form")]))
 
     ; assignment to ∀'s
-    #;(for ([dir '(<:)])
+    (for ([dir '(<: :>)])
       (parameterize ([the-context (list #'α)])
         (inst-subtype #'α dir ((current-type-eval) #'(∀ (X) Int)))
-        (syntax-parse (the-context)
-          [{(~Exis:= _ _)}
-           (check-true #t)]
-          [{(~Exis _)}
-           (fail "no assignment done")]
-          [{_}
-           (fail "something else?")]
-          [{}
-           (fail "it's gone :o")])))
+        (check-syntax (the-context)
+                      {(~Exis:= (~Exis= #'α) ~Int)})))
 
+    ; cannot assign α = X since X goes out of scope
     (check-exn exn:fail:inst-subtype?
                (lambda ()
-                 ; cannot assign variable introduced in subtype
                  (parameterize ([the-context (list #'α)])
-                   (inst-subtype #'α '<: ((current-type-eval) #'(∀ (X) X)))))))
+                   (inst-subtype #'α '<: ((current-type-eval) #'(∀ (X) X))))))
+
+    ; here, X is made into an exis var, which is assigned to α
+    ; and then goes out of scope, leaving the context untouched
+    (parameterize ([the-context (list #'α)])
+      (inst-subtype #'α ':> ((current-type-eval) #'(∀ (X) X)))
+      (check-syntax (the-context) {(~Exis= #'α)})))
 
   )

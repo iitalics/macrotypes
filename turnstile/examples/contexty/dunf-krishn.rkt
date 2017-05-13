@@ -181,11 +181,12 @@
             (subtype (ctx-subst #'A2)
                      (ctx-subst #'B2)))]
 
-      ; FIXME
-      #;[(A (~∀ (X) B))
+      [(A (~∀ (X) B))
+       #:with bX (make-bvar #'X)
+       #:with B- (subst #'bX #'X #'B)
        (context-push! #'X)
-       (begin0 (subtype #'A #'B)
-         (context-pop-until! (~bound-id= #'X)))]
+       (begin0 (subtype #'A #'B-)
+         (context-pop-until! (~bvar= #'bX)))]
 
       ; TODO: occurs?
       [((~and α (~Exis _)) A)
@@ -225,16 +226,18 @@
        (inst-subtype #'α1 dir* #'A1 #:src src)
        (inst-subtype #'α2 dir (ctx-subst #'A2) #:src src)]
 
-      ; FIXME
-      #;[(~∀ (X) A) #:when (eq? dir '<:)
-       (context-push! #'X)
-       (inst-subtype #'α '<: #'A)
-       (context-pop-until! (~bound-id= #'X))]
+      [(~∀ (X) A) #:when (eq? dir '<:)
+       #:with bX (make-bvar #'X)
+       #:with A- (subst #'bX #'X #'A)
+       (context-push! #'bX)
+       (inst-subtype #'α '<: #'A-)
+       (context-pop-until! (~bvar= #'bX))]
 
       [(~∀ (X) A) #:when (eq? dir ':>)
        #:with β (make-exis)
+       #:with A- (subst #'β #'X #'A)
        (context-push! #'(Marker β) #'β)
-       (inst-subtype #'α ':> (subst #'β #'X #'A))
+       (inst-subtype #'α ':> #'A-)
        (context-pop-until! (~Marker (~Exis= #'β)))]
 
       [_ (raise-inst-subtype-error var t #:src src)]))
