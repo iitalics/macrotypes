@@ -9,6 +9,11 @@
            syntax/parse
            rackunit)
 
+  (define-syntax-rule (check-syntax expr patn)
+    (syntax-parse expr
+      [patn (check-true #t)]
+      [_ (fail (format "expected ~a" 'patn))]))
+
   (define I ((current-type-eval) #'Int))
   (define N ((current-type-eval) #'Nat))
   (define M ((current-type-eval) #'Num))
@@ -22,9 +27,14 @@
     (check-false (Exis=? α β))
     (syntax-parse α
       [(~Exis= β) (fail "matched different exis vars")]
-      [(~Exis= α) (void)]
+      [(~Exis= α) (check-true #t)]
       [_ (fail "failed to match same exis var")]))
 
+
+  ; test ctx-subst
+  (with-syntax ([α (make-exis)]
+                [β (make-exis)])
+    (void))
 
   ; test subtype
   (check-true (subtype I I))
@@ -35,8 +45,10 @@
   (check-true (subtype N M))
   (check-false (subtype N U))
   (check-false (subtype M N))
-  (check-true (subtype ((current-type-eval) #`(→ #,M #,N))
+  (check-true (subtype ((current-type-eval) #`(→ #,I #,I))
                        ((current-type-eval) #`(→ #,N #,M))))
+  (check-false (subtype ((current-type-eval) #`(→ #,I #,I))
+                        ((current-type-eval) #`(→ #,M #,N))))
 
 
   ; test well-formed?
@@ -52,19 +64,20 @@
        (check-not-false (well-formed? #'τ (list α #'X)))
        (check-false (well-formed? #'τ (list)))]))
 
+
   ; test inst-subtype
   (let* ([α (make-exis)]
          [β (make-exis)])
     ; assignment
     (parameterize ([the-context (list α β)])
       (inst-subtype α '<: β)
-      (check-true (syntax-parse (the-context)
-                    [{(~Exis:= (~Exis= α) (~Exis= β)) (~Exis= β)} #t]
-                    [_ #f])))
+      (check-syntax (the-context)
+                    {(~Exis:= (~Exis= α) (~Exis= β))
+                     (~Exis= β)}))
     ; always assigns chronologically; note we switch β <: α but resulting context is same
     (parameterize ([the-context (list α β)])
       (inst-subtype β '<: α)
-      (check-true (syntax-parse (the-context)
-                    [{(~Exis:= (~Exis= α) (~Exis= β)) (~Exis= β)} #t]
-                    [_ #f]))))
+      (check-syntax (the-context)
+                    {(~Exis:= (~Exis= α) (~Exis= β))
+                     (~Exis= β)})))
   )
