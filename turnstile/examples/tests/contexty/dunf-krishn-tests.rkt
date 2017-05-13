@@ -62,7 +62,6 @@
          [Id ((current-type-eval) #'(∀ (X) (→ X X)))])
     (check-not-false (well-formed? α (list α)))
     (check-false     (well-formed? α (list)))
-
     (check-not-false (well-formed? Id (list)))
     (syntax-parse Id
       [(~∀ (X) τ)
@@ -79,16 +78,19 @@
   (check-true (subtype N M))
   (check-false (subtype N U))
   (check-false (subtype M N))
-  (check-true (subtype ((current-type-eval) #`(→ #,I #,I))
-                       ((current-type-eval) #`(→ #,N #,M))))
-  (check-false (subtype ((current-type-eval) #`(→ #,I #,I))
-                        ((current-type-eval) #`(→ #,M #,N))))
+  (check-true (subtype ((current-type-eval) #`(→ Int Int))
+                       ((current-type-eval) #`(→ Nat Num))))
+  (check-false (subtype ((current-type-eval) #`(→ Int Int))
+                        ((current-type-eval) #`(→ Num Nat))))
 
   (syntax-parse (list ((current-type-eval) #'(∀ (X) X))
                       ((current-type-eval) #'(∀ (X) X)))
     [((~∀ (_) X) (~∀ (_) Y))
      (check-false (subtype #'X #'Y))
      (check-true (subtype #'X #'X))])
+
+  (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
+  (check-equal? '() (the-context))
 
 
   ; test inst-subtype

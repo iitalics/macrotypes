@@ -69,6 +69,16 @@
       [(~Exis= α1) #t]
       [_ #f]))
 
+  ; pattern expander that matches identifiers that are bound-identifier=? the
+  ; given identifier expression
+  (define-syntax ~bound-id=
+    (pattern-expander
+     (syntax-parser
+       [(_ id-expr)
+        #:with X (generate-temporary #'X)
+        #'(~and X:id
+                (~fail #:unless (bound-identifier=? #'X id-expr)))])))
+
 
   ; apply substitutions from ctx to replace exis vars
   ; according to Exis:= entries in the context
@@ -146,7 +156,13 @@
 
       [((~→ A1 A2) (~→ B1 B2))
        (and (subtype #'B1 #'A1)
-            (subtype #'A2 #'B2))]
+            (subtype (ctx-subst #'A2)
+                     (ctx-subst #'B2)))]
+
+      [(A (~∀ (X) B))
+       (context-push! #'X)
+       (begin0 (subtype #'A #'B)
+         (context-pop-until! (~bound-id= #'X)))]
 
       [_ #f]))
 
