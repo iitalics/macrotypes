@@ -109,8 +109,8 @@
       [_ t]))
 
 
-  ; checks if the type is well formed under the context segment
-  ; which is the algorithm [Γ ⊢ τ]
+  ; checks if the type is well formed under the context
+  ; this is the algorithm [Γ ⊢ τ]
   (define (well-formed? t [ctx (the-context)])
     (syntax-parse t
       [X:id (memf (lambda (y)
@@ -136,7 +136,7 @@
 
 
   ; implements the subtyping algorithm [Γ ⊢ A <: B ⊣ Δ] using
-  ; global state to handle contexts. returns #t if t1 can be make a subtype of t2
+  ; global state to handle contexts. returns #t if t1 can be made a subtype of t2
   (define (subtype t1 t2 #:src [src t1])
     (syntax-parse (list t1 t2)
       [(X:id Y:id)
