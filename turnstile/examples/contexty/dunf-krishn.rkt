@@ -117,11 +117,12 @@
               [_ (search (cdr ctx))])]))]
 
       [(~∀ (X) A)
-       #:with B (ctx-subst #'A ctx)
+       #:with bX (make-bvar #'X)
+       #:with B (ctx-subst (subst #'bX #'X #'A) ctx)
        ; TODO: is there a proper way to transfer syntax properties?
        ; maybe a (type-map f τ) function would be helpful
        ((current-type-eval) (syntax/loc t
-                              (∀ (X) B)))]
+                              (∀ (bX) B)))]
 
       [(~→ A B)
        #:with A- (ctx-subst #'A ctx)
@@ -160,15 +161,19 @@
   ; global state to handle contexts. returns #t if t1 can be made a subtype of t2
   (define (subtype t1 t2 #:src [src t1])
     (syntax-parse (list t1 t2)
-      [(X:id Y:id)
-       (bound-identifier=? #'X #'Y)]
-      [(A B) #:when (type=? #'A #'B)
+      ; rigid variables
+      [(X:id Y:id) (bvar=? #'X #'Y)]
+      [((~and (~Exis _) α1) (~Exis= #'α1)) #t]
+
+      ; hacky way to match two base types
+      [(((~literal #%plain-app) A:id) ((~literal #%plain-app) B:id))
+       #:when (free-identifier=? #'A #'B)
        #t]
+      ; known subtype relations
+      ; TODO: don't hardcode this here
       [(~or (~Nat  ~Int)
             (~Int  ~Num)
             (~Nat  ~Num))
-       #t]
-      [((~and (~Exis _) α1) (~Exis= #'α1))
        #t]
 
       [((~→ A1 A2) (~→ B1 B2))

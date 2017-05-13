@@ -33,7 +33,11 @@
         (check-false (bound-identifier=? #'x #'x-))
         ; this is the solution:
         (check-true (bvar=? #'x #'x-))
-        (check-false (bvar=? #'y #'x-))]
+        (check-false (bvar=? #'y #'x-))
+        ; we can use these as real vars
+        (syntax-parse ((current-type-eval) #'(∀ (x-) x-))
+          [(~∀ (Y) Z)
+           (check-true (bound-identifier=? #'Y #'Z))])]
        [_ (fail "~bvar= failed")])])
 
 
@@ -67,8 +71,10 @@
       (define T ((current-type-eval) #'(∀ (X) α)))
       (syntax-parse T
         [(~∀ (X) I)
-         (context-push! #`(α . Exis:= . #,(mk-type #'X)))
-         (check-syntax (ctx-subst T)
+         #:with bX (make-bvar #'X)
+         #:with T- (subst #'bX #'X T)
+         (context-push! #`(α . Exis:= . bX))
+         (check-syntax (ctx-subst #'T-)
                        (~and (~∀ (Y:id) Z:id)
                              (~do (check bound-identifier=? #'Y #'Z))))])))
 
@@ -87,9 +93,8 @@
 
 
   ; test subtype
-  (check-true (subtype I I))
-  (check-true (subtype N N))
-  (check-true (subtype M M))
+  (check-true (subtype ((current-type-eval) #'Int)
+                       ((current-type-eval) #'Int)))
   (check-true (subtype N I))
   (check-true (subtype I M))
   (check-true (subtype N M))
@@ -99,12 +104,6 @@
                        ((current-type-eval) #`(→ Nat Num))))
   (check-false (subtype ((current-type-eval) #`(→ Int Int))
                         ((current-type-eval) #`(→ Num Nat))))
-
-  (syntax-parse (list ((current-type-eval) #'(∀ (X) X))
-                      ((current-type-eval) #'(∀ (X) X)))
-    [((~∀ (_) X) (~∀ (_) Y))
-     (check-false (subtype #'X #'Y))
-     (check-true (subtype #'X #'X))])
 
   #;(parameterize ([the-context '()])
     (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
