@@ -83,13 +83,17 @@
   (let* ([α (make-exis)]
          [α->N ((current-type-eval) #`(→ #,α Nat))]
          [Id ((current-type-eval) #'(∀ (X) (→ X X)))])
-    (check-not-false (well-formed? α (list α)))
-    (check-false     (well-formed? α (list)))
-    (check-false     (well-formed? Id (list)))
+    (check-true  (well-formed? α (list α)))
+    (check-false (well-formed? α (list)))
+    (check-false (well-formed? Id (list)))
     (syntax-parse Id
-      [(~∀ (X) τ)
-       (check-not-false (well-formed? #'τ (list α #'X)))
-       (check-false (well-formed? #'τ (list)))]))
+      [(~∀ (X) T)
+       #:with bX (make-bvar #'X)
+       #:with T- (subst #'bX #'X #'T)
+       (check-true (well-formed? #'T- (list α #'bX)))
+       (check-false (well-formed? #'T- (list)))]))
+
+
 
 
   ; test subtype

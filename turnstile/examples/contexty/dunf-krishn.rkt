@@ -137,10 +137,7 @@
   ; this is the algorithm [Γ ⊢ τ]
   (define (well-formed? t [ctx (the-context)])
     (syntax-parse t
-      [X:id (memf (lambda (y)
-                    (and (identifier? y)
-                         (bound-identifier=? #'X y)))
-                  ctx)]
+      [X:id (ormap (lambda (y) (bvar=? #'X y)) ctx)]
 
       [(~→ A B)
        (and (well-formed? #'A ctx)
