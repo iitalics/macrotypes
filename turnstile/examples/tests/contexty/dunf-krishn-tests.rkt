@@ -92,6 +92,13 @@
   (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
   (check-equal? '() (the-context))
 
+  (with-syntax ([α (make-exis)]
+                [β (make-exis)])
+    (parameterize ([the-context (list #'α)])
+      (check-true (subtype #'α I))
+      (check-syntax (the-context)
+                    {(~Exis:= (~Exis= #'α) ~Int)})))
+
 
   ; test inst-subtype
   (let* ([α (make-exis)]

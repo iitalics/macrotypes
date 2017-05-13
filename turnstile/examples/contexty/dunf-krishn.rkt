@@ -137,7 +137,7 @@
 
   ; implements the subtyping algorithm [Γ ⊢ A <: B ⊣ Δ] using
   ; global state to handle contexts. returns #t if t1 can be make a subtype of t2
-  (define (subtype t1 t2)
+  (define (subtype t1 t2 #:src [src t1])
     (syntax-parse (list t1 t2)
       [(X:id Y:id)
        (bound-identifier=? #'X #'Y)]
@@ -163,6 +163,12 @@
        (context-push! #'X)
        (begin0 (subtype #'A #'B)
          (context-pop-until! (~bound-id= #'X)))]
+
+      ; TODO: occurs?
+      [((~and α (~Exis _)) A)
+       (inst-subtype #'α '<: #'A #:src src) #t]
+      [(A (~and α (~Exis _)))
+       (inst-subtype #'α ':> #'A #:src src) #t]
 
       [_ #f]))
 
