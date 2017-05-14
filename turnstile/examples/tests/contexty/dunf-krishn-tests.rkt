@@ -122,7 +122,6 @@
     ; the marker confirms that the context was returned to normal
     ; without being flushed entirely
     (context-push! #'(Marker Int))
-    ; TODO: fix this test
     (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
     (check-syntax (the-context) {(~Marker ~Int)})
     (check-true (subtype ((current-type-eval) #'(∀ (X) Int)) M))
@@ -130,10 +129,12 @@
 
   ; subtyping with ∀'s that ARE bounded
   (parameterize ([the-context '()])
-    (check-true (subtype ((current-type-eval) #'(→ Int Int))
-                         ((current-type-eval) #'(∀ (X) (→ Int X)))))
+    (context-push! #'(Marker Unit))
+    (check-true (subtype ((current-type-eval) #'(∀ (X) (→ Int X)))
+                         ((current-type-eval) #'(→ Int Int))))
     (check-true (subtype ((current-type-eval) #'(∀ (X) (→ X Int)))
-                         ((current-type-eval) #'(→ Int Int)))))
+                         ((current-type-eval) #'(→ Int Int))))
+    (check-syntax (the-context) {(~Marker ~Unit)}))
 
   ; test inst-subtype
   (with-syntax ([α (make-exis)]

@@ -181,7 +181,7 @@
       [(A (~∀ (X) B))
        #:with bX (make-bvar #'X)
        #:with B- (subst #'bX #'X #'B)
-       (context-push! #'X)
+       (context-push! #'bX)
        (begin0 (subtype #'A #'B-)
          (context-pop-until! (~bvar= #'bX)))]
 
