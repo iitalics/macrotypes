@@ -16,3 +16,8 @@
 (check-type (suc 2) : Nat -> 3)
 (check-type (inc 2) : Int -> 3)
 (check-not-type (inc 2) : Nat)
+
+(check-type (lambda (x) (inc x)) : (→ Int Int))
+(check-not-type (lambda (x) (inc x)) : (→ Nat Nat))
+
+(typecheck-fail (1 2) #:with-msg "application: not a function type: Nat")
