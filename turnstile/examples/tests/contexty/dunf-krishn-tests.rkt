@@ -76,7 +76,14 @@
          (context-push! #`(α . Exis:= . bX))
          (check-syntax (ctx-subst #'T-)
                        (~and (~∀ (Y:id) Z:id)
-                             (~do (check bound-identifier=? #'Y #'Z))))])))
+                             (~do (check bound-identifier=? #'Y #'Z))))]))
+    ; does ctx-subst screw up bound-identifier=?
+    (syntax-parse (ctx-subst ((current-type-eval)
+                              #'(∀ (X) (∀ (X) (→ Int X)))))
+      [(~∀ (X) (~∀ (Y) (~→ _ Z)))
+       (check-true (bound-identifier=? #'Y #'Z))
+       (check-false (bound-identifier=? #'X #'Z))]
+      [_ (fail "completely wrong!")]))
 
 
   ;;; test well-formed? ;;;
