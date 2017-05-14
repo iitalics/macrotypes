@@ -117,12 +117,11 @@
               [_ (search (cdr ctx))])]))]
 
       [(~∀ (X) A)
-       #:with bX (make-bvar #'X)
-       #:with B (ctx-subst (subst #'bX #'X #'A) ctx)
+       #:with B (ctx-subst #'A ctx)
        ; TODO: is there a proper way to transfer syntax properties?
        ; maybe a (type-map f τ) function would be helpful
        ((current-type-eval) (syntax/loc t
-                              (∀ (bX) B)))]
+                              (∀ (X) B)))]
 
       [(~→ A B)
        #:with A- (ctx-subst #'A ctx)
