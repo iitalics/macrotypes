@@ -20,7 +20,7 @@
   (define U ((current-type-eval) #'Unit))
 
 
-  ; test make-bvar, bvar=?, ~bvar=
+  ;;; test make-bvar, bvar=?, ~bvar= ;;;
   (syntax-parse ((current-type-eval) #'(∀ (ABC) (∀ (ABC) Unit)))
     [(~∀ (X) (~∀ (Y) _))
      #:with x (make-bvar #'X)
@@ -41,7 +41,7 @@
        [_ (fail "~bvar= failed")])])
 
 
-  ; test Exis=? and ~Exis=
+  ;;; test Exis=? and ~Exis= ;;;
   (let ([α (make-exis)]
         [β (make-exis)])
     (check-true (Exis=? α α))
@@ -53,7 +53,7 @@
       [_ (fail "failed to match same exis var")]))
 
 
-  ; test ctx-subst
+  ;;; test ctx-subst ;;;
   (with-syntax ([α (make-exis)]
                 [β (make-exis)])
     ; single substitutions
@@ -79,7 +79,7 @@
                              (~do (check bound-identifier=? #'Y #'Z))))])))
 
 
-  ; test well-formed?
+  ;;; test well-formed? ;;;
   (let* ([α (make-exis)]
          [α->N ((current-type-eval) #`(→ #,α Nat))]
          [Id ((current-type-eval) #'(∀ (X) (→ X X)))])
@@ -94,9 +94,7 @@
        (check-false (well-formed? #'T- (list)))]))
 
 
-
-
-  ; test subtype
+  ;;; test subtype ;;;
   (check-true (subtype ((current-type-eval) #'Int)
                        ((current-type-eval) #'Int)))
   (check-true (subtype N I))
@@ -137,7 +135,7 @@
                        ((current-type-eval) #'(∀ (Y) (∀ (X) (→ X Y))))))
 
 
-  ; test inst-subtype
+  ;;;; test inst-subtype ;;;
   (with-syntax ([α (make-exis)]
                 [β (make-exis)])
     ; assignment
