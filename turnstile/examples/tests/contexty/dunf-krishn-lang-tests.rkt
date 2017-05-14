@@ -26,3 +26,6 @@
 (check-not-type 4 : (∀ (X) X))
 
 (check-type (λ (x) x) : (∀ (A) (→ A A)))
+
+(check-type (λ (f) (f 3)) : (→ (∀ (B) (→ B B))
+                               Int))
