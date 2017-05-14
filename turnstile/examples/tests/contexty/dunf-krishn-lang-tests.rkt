@@ -12,3 +12,7 @@
 (check-type (λ (x) x) : (→ Int Int))
 (check-type (λ (x) x) : (→ Int Num))
 (check-not-type (λ (x) x) : (→ Int Nat))
+
+(check-type (suc 2) : Nat -> 3)
+(check-type (inc 2) : Int -> 3)
+(check-not-type (inc 2) : Nat)

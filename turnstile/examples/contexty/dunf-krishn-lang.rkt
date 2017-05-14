@@ -17,7 +17,7 @@
        (app⇒⇒ (subst #'α #'X #'B) e #:src src)]
 
       [(~→ B C)
-       #:and [~⊢ e ≫ e- ⇐ B]
+       #:and [~⊢ #,e ≫ e- ⇐ B]
        #'(C e-)]
 
       [(~and α (~Exis _))
@@ -27,7 +27,7 @@
                                #'α2
                                #'α1
                                #'(α . Exis:= . (→ α1 α2)))]
-       #:and [~⊢ e ≫ e- ⇐ α1]
+       #:and [~⊢ #,e ≫ e- ⇐ α1]
        #'(α2 e-)]
 
       [_
@@ -47,9 +47,13 @@
 
 (provide (type-out Nat Int Num Unit → ∀)
          (rename-out [dat #%datum]
+                     [app #%app]
                      [lam lambda]
-                     [lam λ]))
+                     [lam λ])
 
+         (typed-out [[add1 : (→ Nat Nat)] suc]
+                    [[add1 : (→ Int Int)] inc]
+                    [[add1 : (→ Num Num)] add1]))
 
 
 (define-typed-syntax dat
@@ -71,16 +75,24 @@
    --------
    [⊢ (λ- (x-) e-)]]
 
-  [(_ (x:id) e) ≫
+  [(_ (x:id) e ~!) ≫
    #:with α (make-exis)
    #:with β (make-exis)
    #:do [(context-push! #'α #'β #'(Marker α))]
    [[x ≫ x- : α] ⊢ e ≫ e- ⇐ β]
    #:do [(context-pop-until! (~Marker (~Exis= #'α)))]
    --------
-   [⊢ (λ- (x-) e-) ⇒ (→ α β)]]
+   [⊢ (λ- (x-) e-) ⇒ (→ α β)]])
 
-  [_ ≫
-   #:fail-when #t ":("
+
+
+(define-typed-syntax app
+  [() ≫
    --------
-   [≻ ()]])
+   [⊢ '() ⇒ Unit]]
+
+  [(_ f e) ≫
+   [⊢ f ≫ f- ⇒ A]
+   #:with (C e-) (app⇒⇒ (ctx-subst #'A) #'e #:src this-syntax)
+   --------
+   [⊢ (#%app- f- e-) ⇒ C]])
