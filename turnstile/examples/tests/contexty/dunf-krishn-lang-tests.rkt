@@ -29,3 +29,5 @@
 
 (check-type (λ (f) (f 3)) : (→ (∀ (B) (→ B B))
                                Int))
+
+(check-type (λ (f) f) : (→ (∀ (B) B) Int))

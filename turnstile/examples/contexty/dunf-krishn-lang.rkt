@@ -17,7 +17,7 @@
        (app⇒⇒ (subst #'α #'X #'B) e #:src src)]
 
       [(~→ B C)
-       #:and [~⊢ (chk #,e) ≫ e- ⇐ B]
+       #:and [~⊢ #,e ≫ e- ⇐ B]
        #'(C e-)]
 
       [(~and α (~Exis _))
@@ -27,7 +27,7 @@
                                #'α2
                                #'α1
                                #'(α . Exis:= . (→ α1 α2)))]
-       #:and [~⊢ (chk #,e) ≫ e- ⇐ α1]
+       #:and [~⊢ #,e ≫ e- ⇐ α1]
        #'(α2 e-)]
 
       [_
@@ -59,7 +59,7 @@
 
 (define-typed-syntax ann
   [(_ e (~datum :) t:type ~!) ≫
-   [⊢ (chk e) ≫ e- ⇐ t.norm]
+   [⊢ e ≫ e- ⇐ t.norm]
    --------
    [⊢ e- ⇒ t.norm]])
 
@@ -93,8 +93,6 @@
 
 
 (define-typed-syntax dat
-  [_ ⇐ (~not #f) ≫ -------- [≻ (chk #,this-syntax)]]
-
   [(_ . k:nat) ≫
    --------
    [⊢ (#%datum- . k) ⇒ Nat]]
@@ -119,7 +117,7 @@
    #:with α (make-exis)
    #:with β (make-exis)
    #:do [(context-push! #'α #'β #'(Marker α))]
-   [[x ≫ x- : α] ⊢ (chk e) ≫ e- ⇐ β]
+   [[x ≫ x- : α] ⊢ e ≫ e- ⇐ β]
    #:do [(context-pop-until! (~Marker (~Exis= #'α)))]
    --------
    [⊢ (λ- (x-) e-) ⇒ (→ α β)]])
@@ -127,8 +125,6 @@
 
 
 (define-typed-syntax app
-  [_ ⇐ (~not #f) ≫ -------- [≻ (chk #,this-syntax)]]
-
   [(_) ≫
    --------
    [⊢ '() ⇒ Unit]]
