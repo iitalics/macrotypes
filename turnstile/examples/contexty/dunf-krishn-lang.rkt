@@ -38,8 +38,9 @@
 
   [current-typecheck-relation
    (lambda (t1 t2)
-     (subtype (ctx-subst t1)
-              (ctx-subst t2)))]
+     (or (eq? t1 t2)
+         (subtype (ctx-subst t1)
+                  (ctx-subst t2))))]
 
   )
 
@@ -60,12 +61,8 @@
   [(_ e (~datum :) t:type ~!) ≫
    [⊢ (chk e) ≫ e- ⇐ t.norm]
    --------
-   [⊢ e- ⇒ t.norm]]
+   [⊢ e- ⇒ t.norm]])
 
-  [_ ≫
-   #:do [(printf "ann\n")]
-   --------
-   [⊢ '":(" ⇒ Unit]])
 
 
 (define-typed-syntax chk
@@ -73,7 +70,7 @@
    #:with bX (make-bvar #'X)
    #:with T- (subst #'bX #'X #'T)
    #:do [(context-push! #'bX)]
-   [⊢ (chk e) ≫ e- ⇐ T]
+   [⊢ (chk e) ≫ e- ⇐ T-]
    #:do [(context-pop-until! (~bvar= #'bX))]
    --------
    [⊢ e-]]
