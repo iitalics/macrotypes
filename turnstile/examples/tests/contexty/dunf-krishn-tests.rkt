@@ -123,18 +123,19 @@
     ; without being flushed entirely
     (context-push! #'(Marker Int))
     (check-true (subtype N ((current-type-eval) #'(∀ (X) Int))))
-    (check-syntax (the-context) {(~Marker ~Int)})
     (check-true (subtype ((current-type-eval) #'(∀ (X) Int)) M))
     (check-syntax (the-context) {(~Marker ~Int)}))
 
   ; subtyping with ∀'s that ARE bounded
-  (parameterize ([the-context '()])
-    (context-push! #'(Marker Unit))
-    (check-true (subtype ((current-type-eval) #'(∀ (X) (→ Int X)))
-                         ((current-type-eval) #'(→ Int Int))))
-    (check-true (subtype ((current-type-eval) #'(∀ (X) (→ X Int)))
-                         ((current-type-eval) #'(→ Int Int))))
-    (check-syntax (the-context) {(~Marker ~Unit)}))
+  (check-true (subtype ((current-type-eval) #'(∀ (X) (→ Int X)))
+                       ((current-type-eval) #'(→ Int Int))))
+
+  ; α-equivalence
+  (check-true (subtype ((current-type-eval) #'(∀ (X) X))
+                       ((current-type-eval) #'(∀ (Y) Y))))
+  (check-true (subtype ((current-type-eval) #'(∀ (X) (∀ (Y) (→ X Y))))
+                       ((current-type-eval) #'(∀ (Y) (∀ (X) (→ X Y))))))
+
 
   ; test inst-subtype
   (with-syntax ([α (make-exis)]
