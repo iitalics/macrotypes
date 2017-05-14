@@ -36,4 +36,23 @@
                                    (type->string A))
                            src)]))
 
+
+  [current-typecheck-relation
+   (lambda (t1 t2)
+     (subtype t1 t2))]
+
   )
+
+(provide (type-out Nat Int Num Unit → ∀)
+         #%datum)
+
+(define-typed-syntax #%datum
+  [(_ . k:nat) ≫
+   --------
+   [⊢ (#%datum- . k) ⇒ Nat]]
+  [(_ . k:exact-integer) ≫
+   --------
+   [⊢ (#%datum- . k) ⇒ Int]]
+  [(_ . k:number) ≫
+   --------
+   [⊢ (#%datum- . k) ⇒ Num]])
