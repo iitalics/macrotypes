@@ -14,6 +14,7 @@
     (syntax-parse A
       [(~∀ (X) B)
        #:with α (make-exis)
+       #:do [(context-push! #'α)]
        (app⇒⇒ (subst #'α #'X #'B) e #:src src)]
 
       [(~and (~→ B C)
@@ -111,7 +112,9 @@
    --------
    [⊢ (λ- (x-) e-)]]
 
-  [_ ⇐ (~not #f) ≫ -------- [≻ (chk #,this-syntax)]]
+  [_ ⇐ (~not #f) ≫
+   --------
+   [≻ (chk #,this-syntax)]]
 
   [(_ (x:id) e ~!) ≫
    #:with α (make-exis)
