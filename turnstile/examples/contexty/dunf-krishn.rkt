@@ -244,12 +244,15 @@
        (inst-subtype #'α ':> #'A-)
        (context-pop-until! (~Marker (~Exis= #'β)))]
 
-      [_ (raise-inst-subtype-error var t #:src src)]))
+      [_
+       (raise-inst-subtype-error var t #:src src)]))
 
   ; exception to be raised by instantiation failure
   (struct exn:fail:inst-subtype exn:fail:syntax (var rhs))
   (define (raise-inst-subtype-error var rhs #:src src)
-    (raise (exn:fail:inst-subtype "cannot instantiate"
+    (raise (exn:fail:inst-subtype (format "cannot instantiate ~a = ~a"
+                                          (type->str var)
+                                          (type->str rhs))
                                   (current-continuation-marks)
                                   (list src)
                                   var rhs)))
