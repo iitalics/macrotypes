@@ -39,14 +39,20 @@
 
   [current-typecheck-relation
    (lambda (t1 t2)
-     (subtype t1 t2))]
+     (subtype (ctx-subst t1)
+              (ctx-subst t2)))]
 
   )
 
-(provide (type-out Nat Int Num Unit → ∀)
-         #%datum)
 
-(define-typed-syntax #%datum
+(provide (type-out Nat Int Num Unit → ∀)
+         (rename-out [dat #%datum]
+                     [lam lambda]
+                     [lam λ]))
+
+
+
+(define-typed-syntax dat
   [(_ . k:nat) ≫
    --------
    [⊢ (#%datum- . k) ⇒ Nat]]
@@ -56,3 +62,25 @@
   [(_ . k:number) ≫
    --------
    [⊢ (#%datum- . k) ⇒ Num]])
+
+
+
+(define-typed-syntax lam
+  [(_ (x:id) e) ⇐ (~→ A B ~!) ≫
+   [[x ≫ x- : A] ⊢ e ≫ e- ⇐ B]
+   --------
+   [⊢ (λ- (x-) e-)]]
+
+  [(_ (x:id) e) ≫
+   #:with α (make-exis)
+   #:with β (make-exis)
+   #:do [(context-push! #'α #'β #'(Marker α))]
+   [[x ≫ x- : α] ⊢ e ≫ e- ⇐ β]
+   #:do [(context-pop-until! (~Marker (~Exis= #'α)))]
+   --------
+   [⊢ (λ- (x-) e-) ⇒ (→ α β)]]
+
+  [_ ≫
+   #:fail-when #t ":("
+   --------
+   [≻ ()]])

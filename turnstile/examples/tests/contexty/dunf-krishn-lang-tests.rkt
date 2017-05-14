@@ -8,3 +8,7 @@
 (check-type -4 : Num)
 (check-type 4.1 : Num)
 (check-not-type 4 : Unit)
+
+(check-type (λ (x) x) : (→ Int Int))
+(check-type (λ (x) x) : (→ Int Num))
+(check-not-type (λ (x) x) : (→ Int Nat))
