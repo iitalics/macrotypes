@@ -37,6 +37,36 @@
                                    (type->string A))
                            src)]))
 
+  ; extension: generalization
+  ; selects unsolved exis vars appearing after (Marker α_m) in the context. then
+  ; generalizes t by surrounding it in ∀'s according to the unsolved variables
+  (define (generalize α_m t)
+    ; generate generic variable names
+    (define var-names '(A B C D E F T1 T2 T3 T4 T5 T6 T7))
+    (define (new-var!)
+      (let ([name (car var-names)])
+        (set! var-names (cdr var-names))
+        (syntax-parse ((current-type-eval) #`(∀ (#,name) #,name))
+          [(~∀ (_) X) #'X])))
+    ; find unsolved
+    (define after-ctx (context-after (~Marker (~Exis= α_m))))
+    (define unsolved (filter Exis? after-ctx))
+    ; replace unsolved with identifiers
+    (define ids (map (lambda (α) (new-var!)) unsolved))
+    (define t+ids
+      (ctx-subst t (map (lambda (α id)
+                          ((current-type-eval) #`(#,α . Exis:= . #,id)))
+                        unsolved
+                        ids)))
+    ; add foralls
+    (begin0
+        ((current-type-eval)
+         (for/fold ([t- t+ids])
+                   ([id (in-list ids)])
+           #`(∀ (#,id) #,t-)))
+      ; and remove from the real context
+      (context-pop-until! (~Marker (~Exis= α_m)))))
+
   [current-typecheck-relation
    (lambda (t1 t2)
      (or (eq? t1 t2)
