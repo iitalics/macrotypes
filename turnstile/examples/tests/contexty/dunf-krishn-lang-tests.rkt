@@ -31,3 +31,8 @@
                                Int))
 
 (check-type (λ (f) f) : (→ (∀ (B) B) Int))
+
+(define x 3)
+(define id (lambda (x) x))
+
+(define y : Num 2)

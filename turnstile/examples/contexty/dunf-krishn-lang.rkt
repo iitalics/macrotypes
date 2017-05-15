@@ -80,7 +80,8 @@
          (rename-out [dat #%datum]
                      [app #%app]
                      [lam lambda]
-                     [lam λ])
+                     [lam λ]
+                     [def define])
          ann
 
          (typed-out [[add1 : (→ Nat Nat)] suc]
@@ -167,3 +168,34 @@
    #:with (C e-) (app⇒⇒ (ctx-subst #'A) #'e #:src this-syntax)
    --------
    [⊢ (#%app- f- e-) ⇒ C]])
+
+
+
+(define-typed-syntax def
+  #:datum-literals (:)
+
+  ; unannotated
+  [(_ x e) ≫
+   #:with α_m (make-exis)
+   #:do [(context-push! #'(Marker α_m))]
+   [⊢ e ≫ e- ⇒ T]
+   #:with T+ (generalize #'α_m (ctx-subst #'T))
+   #:do [(context-pop-until! (~Marker (~Exis= #'α_m)))]
+   ;
+   #:with y (generate-temporary #'x)
+   --------
+   [⊢ (begin-
+        (#%app- printf "defined ~a : ~a\n" 'x '#,(type->string #'T+))
+        (define-syntax x (make-rename-transformer (⊢ y : T+)))
+        (define- y e-))
+      ⇒ Unit]]
+
+  ; annotated
+  [(_ x : t:type e) ≫
+   [⊢ e ≫ e- ⇐ t.norm]
+   #:with y (generate-temporary #'x)
+   --------
+   [⊢ (begin-
+        (define-syntax x (make-rename-transformer (⊢ y : t.norm)))
+        (define- y e-))
+      ⇒ Unit]])
