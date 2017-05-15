@@ -65,3 +65,9 @@
 
 (check-type nat* : (→* Nat Nat Nat))
 (check-type (nat* 5 8) : Nat -> 40)
+
+
+(define (int+nat z n)
+  (natrec z inc n))
+
+(check-type (int+nat -2 +3) : Int -> 1)

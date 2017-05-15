@@ -82,17 +82,7 @@
                      [lam lambda]
                      [lam λ]
                      [def define])
-         ann
-
-         (typed-out [[add1 : (→ Nat Nat)] suc]
-                    [[add1 : (→ Int Int)] inc]
-                    [[add1 : (→ Num Num)] add1]
-                    [[natrec : (∀ (A) (→* A (→ Nat A) (→ A A)))] natrec]))
-
-(define (((natrec zc) sc) n)
-  (if (zero? n) zc
-      (sc (((natrec zc) sc) (sub1 n)))))
-
+         ann)
 
 (define-syntax →*
   (syntax-parser
@@ -176,7 +166,7 @@
 (define-typed-syntax app
   [(_) ≫
    --------
-   [⊢ '() ⇒ Unit]]
+   [⊢ (#%app- void) ⇒ Unit]]
 
   [(_ f e) ≫
    [⊢ f ≫ f- ⇒ A]
@@ -227,3 +217,37 @@
   [(_ (f:id (x:id : t:type) ...) : r:type e) ≫
    --------
    [≻ (def f : (→* t ... r) (lam (x ...) e))]])
+
+
+
+
+(provide (typed-out [[add1 : (→ Nat Nat)] suc]
+                    [[add1 : (→ Int Int)] inc]
+                    [[add1 : (→ Num Num)] add1]
+                    [[display : (∀ (A) (→ A Unit))] display]
+                    [[displayln : (∀ (A) (→ A Unit))] displayln]
+                    [[+* : (→* Num Num Num)] +]
+                    [[-* : (→* Num Num Num)] -]
+                    [[** : (→* Num Num Num)] *]
+                    [[/* : (→* Num Num Num)] /]
+                    [[expt* : (→* Num Int Num)] expt]
+                    [[natrec* : (∀ (A) (→* A (→ A A) (→ Nat A)))] natrec]))
+
+
+(define (ncurry n f)
+  (let aux ([args '()] [n n])
+    (if (zero? n)
+        (apply f (reverse args))
+        (lambda (x) (aux (cons x args) (sub1 n))))))
+
+
+(define (natrec z s n)
+  (if (zero? n) z
+      (s (natrec z s (sub1 n)))))
+
+(define natrec* (ncurry 3 natrec))
+(define +* (ncurry 2 +))
+(define -* (ncurry 2 -))
+(define ** (ncurry 2 *))
+(define /* (ncurry 2 /))
+(define expt* (ncurry 2 expt))
