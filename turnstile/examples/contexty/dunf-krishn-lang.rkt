@@ -98,33 +98,6 @@
 
 
 
-(define-typed-syntax chk
-  [(_ e) ⇐ (~∀ (X) T ~!) ≫
-   #:with bX (make-bvar #'X)
-   #:with T- (subst #'bX #'X #'T)
-   #:do [(context-push! #'bX)]
-   [⊢ (chk e) ≫ e- ⇐ T-]
-   #:do [(context-pop-until! (~bvar= #'bX))]
-   --------
-   [⊢ e-]]
-
-  [(_ e) ⇐ (~and T_in ~!) ≫
-   [⊢ #,(syntax-property #'e 'expected-type #f) ≫ e- ⇒ T_out]
-   #:do [(unless (subtype (ctx-subst #'T_out)
-                          (ctx-subst #'T_in))
-           (raise-syntax-error #f (format "expected type ~a, got ~a"
-                                          (type->string (ctx-subst #'T_in))
-                                          (type->string (ctx-subst #'T_out)))
-                               #'e))]
-   --------
-   [⊢ e-]]
-
-  [(_ e) ≫
-   --------
-   [≻ #,(syntax-property #'e 'expected-type #f)]])
-
-
-
 (define-typed-syntax dat
   [(_ . k:nat) ≫
    --------
@@ -144,9 +117,14 @@
    --------
    [⊢ (λ- (x-) e-)]]
 
-  [_ ⇐ (~not #f) ≫
+  [(_ (x:id) e) ⇐ (~∀ (X) A ~!) ≫
+   #:with bX (make-bvar #'X)
+   #:with A- (subst #'bX #'X #'A)
+   #:do [(context-push! #'bX)]
+   [⊢ #,this-syntax ≫ out ⇐ A]
+   #:do [(context-pop-until! (~bvar= #'bX))]
    --------
-   [≻ (chk #,this-syntax)]]
+   [⊢ out]]
 
   [(_ (x:id) e ~!) ≫
    #:with α (make-exis)
@@ -177,8 +155,10 @@
 
   ; application
   [(_ f e) ≫
-   [⊢ f ≫ f- ⇒ A]
-   #:with (C e-) (app⇒⇒ (ctx-subst #'A) #'e #:src this-syntax)
+   #:with α_f (make-exis)
+   #:do [(context-push! #'α_f)]
+   [⊢ f ≫ f- ⇐ α_f]
+   #:with (C e-) (app⇒⇒ (ctx-subst #'α_f) #'e #:src this-syntax)
    --------
    [⊢ (#%app- f- e-) ⇒ C]]
 
@@ -193,17 +173,17 @@
 
   ; unannotated
   [(_ x:id e) ≫
-   #:with α_m (make-exis)
-   #:do [(context-push! #'(Marker α_m))]
-   [⊢ e ≫ e- ⇒ T]
-   #:with T+ (generalize #'α_m (ctx-subst #'T))
-   #:do [(context-pop-until! (~Marker (~Exis= #'α_m)))]
+   #:with α (make-exis)
+   #:do [(context-push! #'(Marker α) #'α)]
+   [⊢ e ≫ e- ⇐ α]
+   #:with T (generalize #'α (ctx-subst #'α))
+   #:do [(context-pop-until! (~Marker (~Exis= #'α)))]
    ;
    #:with y (generate-temporary #'x)
    --------
    [⊢ (begin-
-        (#%app- printf "defined ~a : ~a\n" 'x '#,(type->string #'T+))
-        (define-syntax x (make-rename-transformer (⊢ y : T+)))
+        (#%app- printf "defined ~a : ~a\n" 'x '#,(type->string #'T))
+        (define-syntax x (make-rename-transformer (⊢ y : T)))
         (define- y e-))
       ⇒ Unit]]
 
@@ -229,13 +209,13 @@
 
 
 (define-typed-syntax (print-type e) ≫
-  #:with α_m (make-exis)
-  #:do [(context-push! #'(Marker α_m))]
-  [⊢ e ≫ e- ⇒ T]
-  #:with T+ (generalize #'α_m (ctx-subst #'T))
-  #:do [(context-pop-until! (~Marker (~Exis= #'α_m)))]
+  #:with α (make-exis)
+  #:do [(context-push! #'α #'(Marker α))]
+  [⊢ e ≫ e- ⇐ α]
+  #:with T (generalize #'α (ctx-subst #'α))
+  #:do [(context-pop-until! (~Marker (~Exis= #'α)))]
   --------
-  [⊢ (#%app- displayln '#,(type->string #'T+)) ⇒ Unit])
+  [⊢ (#%app- displayln '#,(type->string #'T)) ⇒ Unit])
 
 
 
