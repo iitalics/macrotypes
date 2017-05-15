@@ -82,7 +82,7 @@
                      [lam lambda]
                      [lam λ]
                      [def define])
-         ann)
+         ann print-type)
 
 (define-syntax →*
   (syntax-parser
@@ -220,6 +220,17 @@
 
 
 
+(define-typed-syntax (print-type e) ≫
+  #:with α_m (make-exis)
+  #:do [(context-push! #'(Marker α_m))]
+  [⊢ e ≫ e- ⇒ T]
+  #:with T+ (generalize #'α_m (ctx-subst #'T))
+  #:do [(context-pop-until! (~Marker (~Exis= #'α_m)))]
+  --------
+  [⊢ (#%app- displayln '#,(type->string #'T+)) ⇒ Unit])
+
+
+
 
 (provide (typed-out [[add1 : (→ Nat Nat)] suc]
                     [[add1 : (→ Int Int)] inc]
@@ -239,7 +250,6 @@
     (if (zero? n)
         (apply f (reverse args))
         (lambda (x) (aux (cons x args) (sub1 n))))))
-
 
 (define (natrec z s n)
   (if (zero? n) z
