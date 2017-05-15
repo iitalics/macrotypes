@@ -32,7 +32,10 @@
 
 (check-type (λ (f) f) : (→ (∀ (B) B) Int))
 
-(define x 3)
-(define id (lambda (x) x))
+(define p 3)
+(define q : Num 2)
 
-(define y : Num 2)
+(define id
+  (lambda (x) x))
+(define const : (→* Int Int Int)
+  (lambda (x y) x))

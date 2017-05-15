@@ -76,7 +76,7 @@
   )
 
 
-(provide (type-out Nat Int Num Unit → ∀)
+(provide (type-out Nat Int Num Unit ∀ →) →*
          (rename-out [dat #%datum]
                      [app #%app]
                      [lam lambda]
@@ -87,6 +87,12 @@
          (typed-out [[add1 : (→ Nat Nat)] suc]
                     [[add1 : (→ Int Int)] inc]
                     [[add1 : (→ Num Num)] add1]))
+
+
+(define-syntax →*
+  (syntax-parser
+    [(_ a b) #'(→ a b)]
+    [(_ a b c ...) #'(→ a (→* b c ...))]))
 
 
 (define-typed-syntax ann
@@ -154,7 +160,11 @@
    [[x ≫ x- : α] ⊢ e ≫ e- ⇐ β]
    #:do [(context-pop-until! (~Marker (~Exis= #'α)))]
    --------
-   [⊢ (λ- (x-) e-) ⇒ (→ α β)]])
+   [⊢ (λ- (x-) e-) ⇒ (→ α β)]]
+
+  [(_ (x:id y:id ...) e) ≫
+   --------
+   [≻ (lam (x) (lam (y ...) e))]])
 
 
 
@@ -167,7 +177,11 @@
    [⊢ f ≫ f- ⇒ A]
    #:with (C e-) (app⇒⇒ (ctx-subst #'A) #'e #:src this-syntax)
    --------
-   [⊢ (#%app- f- e-) ⇒ C]])
+   [⊢ (#%app- f- e-) ⇒ C]]
+
+  [(_ f e0 e ...) ≫
+   --------
+   [≻ (app (app f e0) e ...)]])
 
 
 
