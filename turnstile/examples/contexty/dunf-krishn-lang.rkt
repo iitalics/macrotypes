@@ -164,10 +164,18 @@
 
 
 (define-typed-syntax app
+  ; unit
   [(_) ≫
    --------
    [⊢ (#%app- void) ⇒ Unit]]
 
+  ; annotation
+  [(_ e (~datum :) t) ≫
+   #:when (brace? this-syntax)
+   --------
+   [≻ (ann e : t)]]
+
+  ; application
   [(_ f e) ≫
    [⊢ f ≫ f- ⇒ A]
    #:with (C e-) (app⇒⇒ (ctx-subst #'A) #'e #:src this-syntax)
