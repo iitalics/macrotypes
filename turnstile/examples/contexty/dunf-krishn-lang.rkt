@@ -189,7 +189,7 @@
   #:datum-literals (:)
 
   ; unannotated
-  [(_ x e) ≫
+  [(_ x:id e) ≫
    #:with α_m (make-exis)
    #:do [(context-push! #'(Marker α_m))]
    [⊢ e ≫ e- ⇒ T]
@@ -204,12 +204,21 @@
         (define- y e-))
       ⇒ Unit]]
 
+  [(_ (f:id x:id ...) e) ≫
+   --------
+   [≻ (def f (lam (x ...) e))]]
+
+
   ; annotated
-  [(_ x : t:type e) ≫
+  [(_ x:id : t:type e) ≫
    [⊢ e ≫ e- ⇐ t.norm]
    #:with y (generate-temporary #'x)
    --------
    [⊢ (begin-
         (define-syntax x (make-rename-transformer (⊢ y : t.norm)))
         (define- y e-))
-      ⇒ Unit]])
+      ⇒ Unit]]
+
+  [(_ (f:id (x:id : t:type) ...) : r:type e) ≫
+   --------
+   [≻ (def f : (→ t ... r) (lam (x ...) e))]])

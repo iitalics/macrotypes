@@ -32,10 +32,21 @@
 
 (check-type (λ (f) f) : (→ (∀ (B) B) Int))
 
+
+
 (define p 3)
 (define q : Num 2)
+(check-type p : Nat -> 3)
+(check-type q : Num -> 2)
 
-(define id
-  (lambda (x) x))
-(define const : (→* Int Int Int)
-  (lambda (x y) x))
+(define (id x) x)
+(define (const x y) x)
+
+(check-type id : (∀ (A) (→ A A)))
+(check-type (id 3) : Nat -> 3)
+(check-type (const 2 ()) : Nat -> 2)
+
+(define (add2 [x : Num]) : Num
+  (add1 (add1 x)))
+
+(check-type (add2 3) : Num -> 5)
