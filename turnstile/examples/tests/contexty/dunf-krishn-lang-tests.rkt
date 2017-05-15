@@ -26,10 +26,7 @@
 (check-not-type 4 : (∀ (X) X))
 
 (check-type (λ (x) x) : (∀ (A) (→ A A)))
-
-(check-type (λ (f) (f 3)) : (→ (∀ (B) (→ B B))
-                               Int))
-
+(check-type (λ (f) (f 3)) : (→ (∀ (B) (→ B B)) Int))
 (check-type (λ (f) f) : (→ (∀ (B) B) Int))
 
 
@@ -46,7 +43,25 @@
 (check-type (id 3) : Nat -> 3)
 (check-type (const 2 ()) : Nat -> 2)
 
+(check-type const : (→ Int (→ Int Int)))
+(check-type const : (→ Int (→ Nat Int)))
+(check-type const : (∀ (A) (→ A (→ A A))))
+
 (define (add2 [x : Num]) : Num
   (add1 (add1 x)))
 
 (check-type (add2 3) : Num -> 5)
+
+
+
+(define (nat+ [n : Nat] [m : Nat]) : Nat
+  (natrec n suc m))
+
+(check-type nat+ : (→* Nat Nat Nat))
+(check-type (nat+ 5 8) : Nat -> 13)
+
+(define (nat* n m)
+  (natrec 0 (nat+ n) m))
+
+(check-type nat* : (→* Nat Nat Nat))
+(check-type (nat* 5 8) : Nat -> 40)

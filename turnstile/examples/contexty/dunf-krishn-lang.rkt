@@ -52,7 +52,7 @@
     (define after-ctx (context-after (~Marker (~Exis= α_m))))
     (define unsolved (filter Exis? after-ctx))
     ; replace unsolved with identifiers
-    (define ids (map (lambda (α) (new-var!)) unsolved))
+    (define ids (reverse (map (lambda (α) (new-var!)) unsolved)))
     (define t+ids
       (ctx-subst t (map (lambda (α id)
                           ((current-type-eval) #`(#,α . Exis:= . #,id)))
@@ -86,7 +86,12 @@
 
          (typed-out [[add1 : (→ Nat Nat)] suc]
                     [[add1 : (→ Int Int)] inc]
-                    [[add1 : (→ Num Num)] add1]))
+                    [[add1 : (→ Num Num)] add1]
+                    [[natrec : (∀ (A) (→* A (→ Nat A) (→ A A)))] natrec]))
+
+(define (((natrec zc) sc) n)
+  (if (zero? n) zc
+      (sc (((natrec zc) sc) (sub1 n)))))
 
 
 (define-syntax →*
@@ -221,4 +226,4 @@
 
   [(_ (f:id (x:id : t:type) ...) : r:type e) ≫
    --------
-   [≻ (def f : (→ t ... r) (lam (x ...) e))]])
+   [≻ (def f : (→* t ... r) (lam (x ...) e))]])
