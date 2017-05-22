@@ -91,16 +91,13 @@
         (hash-remove ctx id)))
 
     (syntax-parse terms
-      [() (ctx-check-empty)]
-      [(~Nop . r) (linear #'r ctx)]
-      [((~and ~NewVar v) . r) (linear #'r (ctx-new-var #'v))]
-      [((~and ~UseVar v) . r) (linear #'r (ctx-use-var #'v))]
-      [((~Then A ...) . r) (linear #'(A ... . r) ctx)]
-      [((~Both A B) . r)
-       (linear #'(A . r) ctx)
-       (linear #'(B . r) ctx)]))
-
-
+      [{} (ctx-check-empty)]
+      [{(~Both A1 A2) B ...}    (linear #'(A1 B ...) ctx)
+                                (linear #'(A2 B ...) ctx)]
+      [{(~Then A ...) B ...}    (linear #'(A ... B ...) ctx)]
+      [{(~and ~NewVar v) B ...} (linear #'(B ...) (ctx-new-var #'v))]
+      [{(~and ~UseVar v) B ...} (linear #'(B ...) (ctx-use-var #'v))]
+      [{~Nop B ...}             (linear #'(B ...) ctx)]))
 
   )
 
@@ -156,7 +153,10 @@
    [⊢ fun ≫ fun-
             ; note that #%app makes no distinction between linear/nonlinear function
             (⇒ : (~or (~-> τ_in ... τ_out)
-                      (~-o τ_in ... τ_out)))
+                      (~-o τ_in ... τ_out)
+                      (~post (~and τ
+                                   (~fail (format "expected -> or -o type, got: ~a"
+                                                  (type->str #'τ)))))))
             (⇒ % A)]
    #:fail-unless (stx-length=? #'{τ_in ...}
                                #'{arg ...})
@@ -167,7 +167,12 @@
    --------
    [⊢ (#%app- fun- arg- ...)
       (⇒ : τ_out)
-      (⇒ % (Then A B ...))]])
+      (⇒ % (Then A B ...))]]
+
+  [(_) ≫
+   --------
+   [⊢ (#%app- void-) (⇒ : Unit) (⇒ % Nop)]])
+
 
 
 ;; to introduce new variables, we call mk-var-dual, have
@@ -188,8 +193,8 @@
 
 
 
-;; we combine the linear terms of a branch using (Both ...) instead of
-;; (Then ...)
+;; combine the linear terms of the branching parts of (if ...) using
+;; (Both ...) instead of (Then ...)
 
 (define-typed-syntax if
   [(_ e1 e2 e3) ≫
@@ -212,6 +217,7 @@
     [(_ [test expr ...] others ...+) #'(if test
                                            (begin expr ...)
                                            (cond others ...))]))
+
 
 
 ;; the linear function is the same as (let ...), but the unrestricted
@@ -282,6 +288,55 @@
   [≻ (#%app- printf '"~s : ~a\n"
              e-
              '#,(type->str #'τ))])
+
+
+
+;; define our own typed-out for linear types
+;; this is mainly copied from macrotypes.rkt
+
+(require (for-syntax syntax/transformer))
+
+; i wrote this because make-variable-like-transformer was insufficient
+(define-for-syntax (type+lin-transformer ref-stx ty lin)
+  (make-set!-transformer
+   (syntax-parser
+     [:id (put-props ref-stx
+                     ': (syntax-local-introduce ((current-type-eval) ty))
+                     '% (syntax-local-introduce ((current-type-eval) lin)))]
+     [(x . tail)
+      #:with ap (datum->syntax this-syntax '#%app)
+      #`(ap x . tail)])))
+
+
+(define-syntax lin-typed-out
+  (make-provide-pre-transformer
+   (λ (stx modes)
+     (syntax-parse stx
+       #:datum-literals (:)
+       [(_ [x:id : ty:type (~parse out-x #'x)] ...)
+        #:with (x/tc ...) (generate-temporaries #'(x ...))
+        #:when (stx-map
+                syntax-local-lift-module-end-declaration
+                #'{(define-syntax x/tc
+                     (type+lin-transformer #'x #'ty #'Nop)) ...})
+        (pre-expand-export (syntax/loc stx (rename-out [x/tc out-x] ...))
+                           modes)]))))
+
+
+;; standard library
+
+(provide (lin-typed-out [+ : (-> Int Int Int)]
+                        [< : (-> Int Int Bool)]
+                        [inc : (-> (Box Int) (Box Int))]
+                        [unbox-int : (-> (Box Int) Int)]))
+
+(define- (inc b)
+  (#%app- set-box!- b (#%app- add1- (#%app- unbox- b)))
+  b)
+
+(define- (unbox-int b)
+  (#%app- unbox- b))
+
 
 
 
