@@ -48,8 +48,8 @@
               #:fail "f: linear variable may be used more than once")
 
 ; tuple types (linear only if any subtypes are linear)
-(check-linear (lambda ([p : (× Int Int)]) ()))
-(check-linear (lambda ([p : (× Int (Box Int))]) ())
+(check-linear (λ ([p : (× Int Int)]) ()))
+(check-linear (λ ([p : (× Int (Box Int))]) ())
               #:fail "p: linear variable may be unused")
 
 
@@ -58,9 +58,9 @@
 (check-type #f : Bool)
 (check-type () : Unit)
 (check-type (tup 1 ()) : (× Int Unit))
-(check-type (lambda ([x : Int]) x) : (-> Int Int))
-(check-type (lambda ([x : (Box Int)]) x) : (-> (Box Int) (Box Int)))
-(check-type (lambda once ([x : Int]) ()) : (-o Int Unit))
+(check-type (λ ([x : Int]) x) : (-> Int Int))
+(check-type (λ ([x : (Box Int)]) x) : (-> (Box Int) (Box Int)))
+(check-type (λ once ([x : Int]) ()) : (-o Int Unit))
 (check-type (if #t 3 4) : Int)
 (check-type (if 4 3 4) #:fail)
 
@@ -68,7 +68,7 @@
 ; standard functions test
 (check-type + : (-> Int Int Int))
 (check-type (+ 1 2) : Int)
-(check-type (lambda ([b : (Box Int)])
+(check-type (λ ([b : (Box Int)])
               (let ([v (take-int b)])
                 (if (< 10 v)
                     (box 0)
