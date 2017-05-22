@@ -63,3 +63,14 @@
 (check-type (lambda once ([x : Int]) ()) : (-o Int Unit))
 (check-type (if #t 3 4) : Int)
 (check-type (if 4 3 4) #:fail)
+
+
+; standard functions test
+(check-type + : (-> Int Int Int))
+(check-type (+ 1 2) : Int)
+(check-type (lambda ([b : (Box Int)])
+              (let ([v (take-int b)])
+                (if (< 10 v)
+                    (box 0)
+                    (box (+ 1 v)))))
+            : (-> (Box Int) (Box Int)))

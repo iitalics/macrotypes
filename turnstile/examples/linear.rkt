@@ -167,12 +167,7 @@
    --------
    [⊢ (#%app- fun- arg- ...)
       (⇒ : τ_out)
-      (⇒ % (Then A B ...))]]
-
-  [(_) ≫
-   --------
-   [⊢ (#%app- void-) (⇒ : Unit) (⇒ % Nop)]])
-
+      (⇒ % (Then A B ...))]])
 
 
 ;; to introduce new variables, we call mk-var-dual, have
@@ -328,13 +323,13 @@
 (provide (lin-typed-out [+ : (-> Int Int Int)]
                         [< : (-> Int Int Bool)]
                         [inc : (-> (Box Int) (Box Int))]
-                        [unbox-int : (-> (Box Int) Int)]))
+                        [take-int : (-> (Box Int) Int)]))
 
 (define- (inc b)
   (#%app- set-box!- b (#%app- add1- (#%app- unbox- b)))
   b)
 
-(define- (unbox-int b)
+(define- (take-int b)
   (#%app- unbox- b))
 
 
