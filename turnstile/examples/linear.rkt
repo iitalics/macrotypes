@@ -14,8 +14,15 @@
 (define-base-type NewVar)
 (define-base-type UseVar)
 
+(provide (type-out Int Bool Unit Box × -> -o)
+         #%datum box tup
+         begin #%app let if cond lambda
+         #%top-interaction
+         (rename-out [module-begin #%module-begin]
+                     [lambda λ])
+         require)
+
 (begin-for-syntax
-  (require (for-syntax syntax/parse))
 
   ; put multiple syntax properties onto the given syntax object
   ; (put-props stx key1 val1 key2 val2 ...) -> stx-
@@ -61,8 +68,8 @@
   ; check if the list of linear terms (e.g. Then, All, NewVar, etc.) represent
   ; a consistent program. raises an exception if variables are determined to be
   ; overused to underused.
-  ; (check-linear term-list) -> void
-  (define (check-linear terms [ctx (hash)])
+  ; (linear term-list) -> void
+  (define (linear terms [ctx (hash)])
 
     (define (ctx-check-empty)
       (for ([(id orig) (in-hash ctx)])
@@ -85,25 +92,18 @@
 
     (syntax-parse terms
       [() (ctx-check-empty)]
-      [(~Nop . r) (check-linear #'r ctx)]
-      [((~and ~NewVar v) . r) (check-linear #'r (ctx-new-var #'v))]
-      [((~and ~UseVar v) . r) (check-linear #'r (ctx-use-var #'v))]
-      [((~Then A ...) . r) (check-linear #'(A ... . r) ctx)]
+      [(~Nop . r) (linear #'r ctx)]
+      [((~and ~NewVar v) . r) (linear #'r (ctx-new-var #'v))]
+      [((~and ~UseVar v) . r) (linear #'r (ctx-use-var #'v))]
+      [((~Then A ...) . r) (linear #'(A ... . r) ctx)]
       [((~Both A B) . r)
-       (check-linear #'(A . r) ctx)
-       (check-linear #'(B . r) ctx)]))
+       (linear #'(A . r) ctx)
+       (linear #'(B . r) ctx)]))
 
 
 
   )
 
-
-(provide (type-out Int Bool Unit Box × -> -o)
-         #%datum box tup
-         begin #%app let if cond lambda
-         #%top-interaction
-         (rename-out [module-begin #%module-begin]
-                     [lambda λ]))
 
 
 ;; datum produces Nop since no linear variables are created or used
@@ -253,17 +253,99 @@
 ;; redefine #%top-interaction and #%module-begin to check
 ;; linear terms after typechecking.
 
-(define-typed-syntax (module-begin e ...) ≫
-  [⊢ e ≫ e- (⇒ : _) (⇒ % A)] ...
-  #:do [(for-each check-linear
-                  (syntax-e #'({A} ...)))]
-  --------
-  [≻ (#%module-begin e- ...)])
+(define-syntax module-begin
+  (syntax-parser
+    [(_ e ...)
+     #:with (e- ...)
+     (map (syntax-parser
+            [((~or (~literal require)
+                   (~literal define)). _)
+             this-syntax]
+            [e #'(check-me e)])
+          (syntax-e #'(e ...)))
+     #'(#%module-begin
+        e- ...)]))
+
+(define-syntax check-me
+  (syntax-parser
+    [(~and (_ e)
+           [~⊢ e ≫ e- (⇒ : τ) (⇒ % A)])
+     (begin
+       (when (syntax-e #'A)
+         (linear #'{A}))
+       #'e-)]))
 
 (define-typed-syntax (#%top-interaction . e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
-  #:do [(check-linear #'{A})]
+  #:do [(linear #'{A})]
   --------
   [≻ (#%app- printf '"~s : ~a\n"
              e-
              '#,(type->str #'τ))])
+
+
+
+;; test functions (TODO: put in another file)
+
+(provide check-type
+         check-linear)
+
+(require (for-syntax (prefix-in RU: rackunit))
+         (only-in racket/string string-contains?)
+         (only-in racket/function negate)
+         (prefix-in RU: rackunit))
+
+(define-typed-syntax check-type
+  #:datum-literals (: =)
+
+  [(_ e : t:type) ≫
+   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
+   #:do [(RU:check type=? #'t.norm #'τ
+                   (format "Type check failure ~a vs ~a"
+                           (type->str #'t.norm)
+                           (type->str #'τ)))
+         (linear #'{A})]
+   --------
+   [⊢ (#%app- RU:check-true '#t) (⇒ : Unit) (⇒ % Nop)]]
+
+  [(_ e #:fail) ≫
+   #:with r (with-handlers ([exn:fail? (lambda _
+                                         (syntax/loc #'e (#%app- RU:check-true '#t)))])
+              (syntax-parse '()
+                [([~⊢ e ≫ e- (⇒ : τ) (⇒ % A)])
+                 (syntax/loc #'e (#%app- RU:fail '"Expected type check failure"))]))
+   --------
+   [⊢ r (⇒ : Unit) (⇒ % Nop)]])
+
+
+(define-typed-syntax check-linear
+  [(_ e) ≫
+   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
+   #:do [(linear #'{A})]
+   --------
+   [⊢ (#%app- RU:check-true '#t) (⇒ : Unit) (⇒ % Nop)]]
+
+  [(_ e #:fail) ≫
+   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
+   #:with r (with-handlers ([exn:fail:syntax? (lambda _ (syntax/loc #'e
+                                                     (#%app- RU:check-true '#t)))])
+              (linear #'{A})
+              (syntax/loc #'e
+                (#%app- RU:fail '"expected linearity failure")))
+   --------
+   [⊢ r (⇒ : Unit) (⇒ % Nop)]]
+
+  [(_ e #:fail msg) ≫
+   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
+   #:with r (with-handlers ([exn:fail:syntax? (lambda (ex)
+                                                (quasisyntax/loc #'e
+                                                  (#%app- RU:check
+                                                          string-contains?
+                                                          '#,(exn-message ex)
+                                                          'msg
+                                                          '"expected failure message to match")))])
+              (linear #'{A})
+              (syntax/loc #'e
+                (#%app- RU:fail '"expected linearity failure")))
+   --------
+   [⊢ r (⇒ : Unit) (⇒ % Nop)]])
