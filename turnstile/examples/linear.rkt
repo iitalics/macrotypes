@@ -300,7 +300,7 @@
                      '% (syntax-local-introduce ((current-type-eval) lin)))]
      [(x . tail)
       #:with ap (datum->syntax this-syntax '#%app)
-      #`(ap x . tail)])))
+      (syntax/loc this-syntax (ap x . tail))])))
 
 
 (define-syntax lin-typed-out
