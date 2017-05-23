@@ -1,4 +1,6 @@
 #lang turnstile
+(require (for-syntax racket/set
+                     syntax/id-set))
 
 ; type system
 (define-base-types Int Bool Unit)
@@ -7,18 +9,13 @@
 (define-type-constructor -o #:arity >= 1) ; linear function
 (define-type-constructor Box #:arity = 1) ; mutable box
 
-; linear logic
-(define-type-constructor Then #:arity >= 1) ; A ⅋ B ...
-(define-type-constructor Both #:arity = 2) ; A & B ...
-(define-base-type Nop)
-(define-base-type NewVar)
-(define-base-type UseVar)
+(define-base-type Δ)
 
 (provide (type-out Int Bool Unit Box × -> -o)
-         #%datum box tup
-         begin #%app let let-values if cond lambda
-         #%top-interaction
+         box tup
+         #%datum let let-values if lambda
          (rename-out [module-begin #%module-begin]
+                     [top-interaction #%top-interaction]
                      [lambda λ])
          require)
 
@@ -35,93 +32,137 @@
 
 
   ; is the given type a linear type?
-  ; (is-linear? type) -> boolean
-  (define is-linear?
+  ; (linear? type) -> boolean
+  (define linear?
     (syntax-parser
       [(~Box _) #t]
       [(~-o _ ...) #t]
-      [(~× a b) (or (is-linear? #'a) (is-linear? #'b))]
+      [(~× a b) (or (linear? #'a) (linear? #'b))]
       [_ #f]))
 
 
-  ; generates a list of two linear terms, first for the creation of
-  ; the variable (x↑), and second for the use of the variable (x↓). if given an
-  ; unrestricted type, returns (Nop Nop), otherwise returns (NewVar UseVar),
-  ; both corresponding to the variable.
-  ; (mk-var-dual stx type) -> (list δ-new δ-use)
-  (define (mk-var-dual orig type)
+
+  ;; create a linear term with the given information
+  (define (make-lin-term used-vars
+                         ; ref-vars
+                         )
+    (put-props #'Δ
+               '#%term-used-vars used-vars))
+
+
+  ;; extract information from linear terms
+  (define (lin-used-vars a) (syntax-property a '#%term-used-vars))
+
+
+  ;; expand a linear term
+  (define (expand-lin-term a)
+    ((current-type-eval) a))
+
+
+
+
+  ;; make a linear term for a variable with the given type
+  (define (make-linear-var orig type)
     (cond
-      [(is-linear? type)
-       (let ([uniq-id (gensym)])
-         (map (lambda (stx)
-                (put-props stx
-                           '#%id uniq-id
-                           '#%orig orig))
-              (list
-               ((current-type-eval) (syntax/loc orig NewVar))
-               ((current-type-eval) (syntax/loc orig UseVar)))))]
+      [(linear? type)
+       (let ([tmp (put-props (generate-temporary)
+                             'orig orig)])
+         (make-lin-term (immutable-free-id-set (list tmp))))]
       [else
-       (list ((current-type-eval) #'Nop)
-             ((current-type-eval) #'Nop))]))
+       (make-empty-lin-term)]))
 
+  ;; make an linear term that does nothing
+  (define (make-empty-lin-term)
+    (make-lin-term (immutable-free-id-set)))
 
-  ; check if the list of linear terms (e.g. Then, All, NewVar, etc.) represent
-  ; a consistent program. raises an exception if variables are determined to be
-  ; overused to underused.
-  ; (linear term-list) -> void
-  (define (linear terms [ctx (hash)])
-
-    (define (ctx-check-empty)
-      (for ([(id orig) (in-hash ctx)])
-        (raise-syntax-error #f
-                            "linear variable may be unused"
-                            orig)))
-
-    (define (ctx-new-var v)
-      (hash-set ctx
-                (syntax-property v '#%id)
-                (syntax-property v '#%orig)))
-
-    (define (ctx-use-var v)
-      (let ([id (syntax-property v '#%id)])
-        (unless (hash-has-key? ctx id)
-          (raise-syntax-error #f
-                              "linear variable may be used more than once"
-                              (syntax-property v '#%orig)))
-        (hash-remove ctx id)))
-
-    (syntax-parse terms
-      [{} (ctx-check-empty)]
-      [{(~Both A1 A2) B ...}    (linear #'(A1 B ...) ctx)
-                                (linear #'(A2 B ...) ctx)]
-      [{(~Then A ...) B ...}    (linear #'(A ... B ...) ctx)]
-      [{(~and ~NewVar v) B ...} (linear #'(B ...) (ctx-new-var #'v))]
-      [{(~and ~UseVar v) B ...} (linear #'(B ...) (ctx-use-var #'v))]
-      [{~Nop B ...}             (linear #'(B ...) ctx)]))
 
   )
 
 
 
-;; datum produces Nop since no linear variables are created or used
+
+;; linear combinators
+
+(define-syntax LNop
+  ; linear logic:  1 & A
+  (syntax-parser
+    [(_) (make-empty-lin-term)]
+
+    [(_ #:src s A)
+     #:with A- (expand-lin-term #'A)
+     (for ([v (in-set (lin-used-vars #'A-))])
+       (raise-syntax-error #f "linear variable not allowed in this context"
+                           #'src
+                           (syntax-property v 'orig)))
+     (make-empty-lin-term)]))
+
+
+
+
+(define-syntax LSeq
+  ; linear logic:  A ⅋ ...
+  (syntax-parser
+    [(_ A ...)
+     (let ([used-vars
+            (for/fold ([used (immutable-free-id-set)])
+                      ([term (in-list (syntax-e #'(A ...)))])
+              (let ([term-used (lin-used-vars (expand-lin-term term))])
+                (for ([v (in-set (set-intersect used term-used))])
+                  (raise-syntax-error #f "linear variable used more than once"
+                                      (syntax-property v 'orig)))
+                (set-union used term-used)))])
+       (make-lin-term used-vars))]))
+
+
+(define-syntax LIntro
+  ; linear logic:  (A ⊗ ...) -o B
+  (syntax-parser
+    [(_ #:src src A ... B)
+     (let ([new-vars (for/fold ([vars (immutable-free-id-set)])
+                               ([term (in-list (syntax-e #'(A ...)))])
+                       (set-union vars (lin-used-vars (expand-lin-term term))))]
+           [used-vars (lin-used-vars (expand-lin-term #'B))])
+
+       (for ([v (in-set (set-subtract new-vars used-vars))])
+         (raise-syntax-error #f "linear variable unused"
+                             #'src
+                             (syntax-property v 'orig)))
+       (make-lin-term (set-subtract used-vars new-vars)))]))
+
+
+(define-syntax LJoin
+  ; linear logic:  A & B
+  (syntax-parser
+    [(_ #:src src A B)
+     (let ([used-a (lin-used-vars (expand-lin-term #'A))]
+           [used-b (lin-used-vars (expand-lin-term #'B))])
+       (for ([v (in-set (set-symmetric-difference used-a used-b))])
+         (raise-syntax-error #f "linear variable may be unused"
+                             #'src
+                             (syntax-property v 'orig)))
+       (make-lin-term used-a))]))
+
+
+
+
+
 
 (define-typed-syntax #%datum
   [(_ . k:integer) ≫
    --------
-   [⊢ 'k (⇒ : Int) (⇒ % Nop)]]
+   [⊢ 'k (⇒ : Int) (⇒ % (LNop))]]
   [(_ . k:boolean) ≫
    --------
-   [⊢ 'k (⇒ : Bool) (⇒ % Nop)]])
+   [⊢ 'k (⇒ : Bool) (⇒ % (LNop))]])
 
-
-
-;; these simply forward / combine the linear terms of their subexpressions
 
 (define-typed-syntax box
   [(_ e) ≫
    [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
    --------
-   [⊢ (#%app- box- e-) (⇒ : (Box τ)) (⇒ % A)]])
+   [⊢ (#%app- box- e-)
+      (⇒ : (Box τ))
+      (⇒ % A)]])
 
 
 (define-typed-syntax tup
@@ -131,147 +172,80 @@
    --------
    [⊢ (#%app- list- e1- e2-)
       (⇒ : (× τ1 τ2))
-      (⇒ % (Then A B))]])
+      (⇒ % (LSeq A B))]])
 
-
-(define-typed-syntax begin
-  [(_ e1 ... e2) ≫
-   [⊢ e1 ≫ e1- (⇒ : _) (⇒ % A)] ...
-   [⊢ e2 ≫ e2- (⇒ : τ) (⇒ % B)]
-   --------
-   [⊢ (begin- e1- ... e2-)
-      (⇒ : τ)
-      (⇒ % (Then A ... B))]])
-
-
-(define-typed-syntax #%app
-  [(_) ≫
-   --------
-   [⊢ (#%app- void-) (⇒ : Unit) (⇒ % Nop)]]
-
-  [(_ fun arg ...) ≫
-   [⊢ fun ≫ fun-
-            ; note that #%app makes no distinction between linear/nonlinear function
-            (⇒ : (~or (~-> τ_in ... τ_out)
-                      (~-o τ_in ... τ_out)
-                      (~post (~and τ
-                                   (~fail (format "expected -> or -o type, got: ~a"
-                                                  (type->str #'τ)))))))
-            (⇒ % A)]
-   #:fail-unless (stx-length=? #'{τ_in ...}
-                               #'{arg ...})
-   "wrong number of arguments to function"
-
-   [⊢ arg ≫ arg- (⇒ : τ_arg) (⇒ % B)] ...
-   [τ_arg τ= τ_in #:for arg] ...
-   --------
-   [⊢ (#%app- fun- arg- ...)
-      (⇒ : τ_out)
-      (⇒ % (Then A B ...))]])
-
-
-;; to introduce new variables, we call mk-var-dual, have
-;; the variables expand to x↓ when they are used, and then introduce
-;; x↑ ourselves in the output
 
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
+   #:with here this-syntax
    [⊢ rhs ≫ rhs- (⇒ : τ) (⇒ % A)] ...
-   #:with ((x↑ x↓) ...) (map mk-var-dual
-                             (syntax-e #'(x ...))
-                             (syntax-e #'(τ ...)))
-   [[x ≫ x- : τ % x↓] ... ⊢ e ≫ e- (⇒ : τ_out) (⇒ % B)]
+   #:with (Lx ...) (map make-linear-var
+                        (syntax-e #'(x ...))
+                        (syntax-e #'(τ ...)))
+   [[x ≫ x- : τ % Lx] ... ⊢ e ≫ e- (⇒ : τ_out) (⇒ % B)]
    --------
    [⊢ (let- ([x- rhs-] ...) e-)
       (⇒ : τ_out)
-      (⇒ % (Then A ... x↑ ... B))]])
+      (⇒ % (LSeq A ... (LIntro #:src here
+                               Lx ... B)))]])
 
 
 (define-typed-syntax let-values
-  [(_ ([(x1:id x2:id) rhs] ...) e) ≫
+  [(_ ([(x:id y:id) rhs] ...) e) ≫
+   #:with here this-syntax
    [⊢ rhs ≫ rhs- (⇒ : (~× τ1 τ2)) (⇒ % A)] ...
-   #:with ((x1↑ x1↓) ...) (map mk-var-dual
-                               (syntax-e #'(x1 ...))
-                               (syntax-e #'(τ1 ...)))
-   #:with ((x2↑ x2↓) ...) (map mk-var-dual
-                               (syntax-e #'(x2 ...))
-                               (syntax-e #'(τ2 ...)))
-   [([x1 ≫ x1- : τ1 % x1↓] ...)
-    ([x2 ≫ x2- : τ2 % x2↓] ...)
+   #:with (Lx ...) (map make-linear-var
+                        (syntax-e #'(x ...))
+                        (syntax-e #'(τ1 ...)))
+   #:with (Ly ...) (map make-linear-var
+                        (syntax-e #'(y ...))
+                        (syntax-e #'(τ2 ...)))
+   [([x ≫ x- : τ1 % Lx] ...)
+    ([y ≫ y- : τ2 % Ly] ...)
     ⊢ e ≫ e- (⇒ : τ_out) (⇒ % B)]
 
-   #:with (tmp ...) (generate-temporaries #'(x1 ...))
+   #:with (tmp ...) (generate-temporaries #'(rhs ...))
    --------
    [⊢ (let- ([tmp rhs-] ...)
-            (let-
-             ([x1- (#%app- car tmp)] ...
-              [x2- (#%app- cadr tmp)] ...)
-             e-))
+            (let- ([x- (#%app- car- tmp)] ...
+                   [y- (#%app- cadr- tmp)] ...)
+                  e-))
       (⇒ : τ_out)
-      (⇒ % (Then A ... x1↑ ... x2↑ ... B))]])
+      (⇒ % (LSeq A ... (LIntro #:src here
+                               Lx ...
+                               Ly ... B)))]])
 
-
-
-;; combine the linear terms of the branching parts of (if ...) using
-;; (Both ...) instead of (Then ...)
 
 (define-typed-syntax if
   [(_ e1 e2 e3) ≫
+   #:with here this-syntax
    [⊢ e1 ≫ e1- (⇒ : ~Bool) (⇒ % A)]
-   [⊢ e2 ≫ e2- (⇒ : τ1) (⇒ % B)]
-   [⊢ e3 ≫ e3- (⇒ : τ2) (⇒ % C)]
-   #:fail-unless (type=? #'τ1 #'τ2)
-   (format "conflicting types in branches: ~a and ~a"
-           (type->str #'τ1)
-           (type->str #'τ2))
+   [⊢ e2 ≫ e2- (⇒ : τ1) (⇒ % B1)]
+   [⊢ e3 ≫ e3- (⇒ : τ2) (⇒ % B2)]
+   [τ2 τ= τ1 #:for e3]
    --------
    [⊢ (if- e1- e2- e3-)
       (⇒ : τ1)
-      (⇒ % (Then A (Both B C)))]])
+      (⇒ % (LSeq A (LJoin #:src here B1 B2)))]])
 
-
-(define-syntax cond
-  (syntax-parser
-    [(_ [(~datum else) expr ...])    #'(begin expr ...)]
-    [(_ [test expr ...] others ...+) #'(if test
-                                           (begin expr ...)
-                                           (cond others ...))]))
-
-
-
-;; the linear function is the same as (let ...), but the unrestricted
-;; function makes use of (Both ...) in a non-obvious way, by combining
-;; it with Nop. this works because an unrestricted function doesn't need to be
-;; called, so we account for that case as if its a branch. this also solves
-;; the problem of unrestricted functions being called multiple times, since
-;; we are forced (by the Nop branch) to use the linear variables later on in
-;; the code, which would cause a double-use error.
 
 (define-typed-syntax lambda
-  #:datum-literals (: once)
-  ; linear function
-  [(_ once ({x:id : t:type} ...) e) ≫
-   #:with (τ_in ...) #'(t.norm ...)
-   #:with ((x↑ x↓) ...) (map mk-var-dual
-                             (syntax-e #'(x ...))
-                             (syntax-e #'(τ_in ...)))
-   [[x ≫ x- : τ_in % x↓] ... ⊢ e ≫ e- (⇒ : τ_out) (⇒ % B)]
+  [(_ ([x:id (~datum :) t:type] ...) e) ≫
+   #:with here this-syntax
+   #:with (τ ...) #'(t.norm ...)
+   #:with (Lx ...) (map make-linear-var
+                        (syntax-e #'(x ...))
+                        (syntax-e #'(τ ...)))
+   [[x ≫ x- : τ % Lx] ... ⊢ e ≫ e- (⇒ : τ_out) (⇒ % A)]
    --------
    [⊢ (λ- (x- ...) e-)
-      (⇒ : (-o τ_in ... τ_out))
-      (⇒ % (Then x↑ ... B))]]
+      (⇒ : (-> τ ... τ_out))
+      (⇒ % (LNop #:src here
+                 (LIntro #:src here
+                         Lx ... A)))]])
 
-  ; unrestricted function
-  [(_ ({x:id : t:type} ...) e) ≫
-   #:with (τ_in ...) #'(t.norm ...)
-   #:with ((x↑ x↓) ...) (map mk-var-dual
-                             (syntax-e #'(x ...))
-                             (syntax-e #'(τ_in ...)))
-   [[x ≫ x- : τ_in % x↓] ... ⊢ e ≫ e- (⇒ : τ_out) (⇒ % B)]
-   --------
-   [⊢ (λ- (x- ...) e-)
-      (⇒ : (-> τ_in ... τ_out))
-      (⇒ % (Both Nop (Then x↑ ... B)))]])
+
+
 
 
 
@@ -281,145 +255,12 @@
 (define-syntax module-begin
   (syntax-parser
     [(_ e ...)
-     #:with (e- ...)
-     (map (syntax-parser
-            [((~or (~literal require)
-                   (~literal define)). _)
-             this-syntax]
-            [e #'(check-me e)])
-          (syntax-e #'(e ...)))
-     #'(#%module-begin
-        e- ...)]))
+     #'(#%module-begin)]))
 
-(define-syntax check-me
-  (syntax-parser
-    [(~and (_ e)
-           [~⊢ e ≫ e- (⇒ : τ) (⇒ % A)])
-     (begin
-       (when (syntax-e #'A)
-         (linear #'{A}))
-       #'e-)]))
-
-(define-typed-syntax (#%top-interaction . e) ≫
+(define-typed-syntax (top-interaction . e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
-  #:do [(linear #'{A})]
+  #:do [(expand-lin-term #'(LNop #:src e A))]
   --------
   [≻ (#%app- printf '"~s : ~a\n"
              e-
              '#,(type->str #'τ))])
-
-
-
-;; define our own typed-out for linear types
-;; this is mainly copied from macrotypes.rkt
-
-(require (for-syntax syntax/transformer))
-
-; i wrote this because make-variable-like-transformer was insufficient
-(define-for-syntax (type+lin-transformer ref-stx ty lin)
-  (make-set!-transformer
-   (syntax-parser
-     [:id (put-props ref-stx
-                     ': (syntax-local-introduce ((current-type-eval) ty))
-                     '% (syntax-local-introduce ((current-type-eval) lin)))]
-     [(x . tail)
-      #:with ap (datum->syntax this-syntax '#%app)
-      (syntax/loc this-syntax (ap x . tail))])))
-
-
-(define-syntax lin-typed-out
-  (make-provide-pre-transformer
-   (λ (stx modes)
-     (syntax-parse stx
-       #:datum-literals (:)
-       [(_ [x:id : ty:type (~parse out-x #'x)] ...)
-        #:with (x/tc ...) (generate-temporaries #'(x ...))
-        #:when (stx-map
-                syntax-local-lift-module-end-declaration
-                #'{(define-syntax x/tc
-                     (type+lin-transformer #'x #'ty #'Nop)) ...})
-        (pre-expand-export (syntax/loc stx (rename-out [x/tc out-x] ...))
-                           modes)]))))
-
-
-;; standard library
-
-(provide (lin-typed-out [+ : (-> Int Int Int)]
-                        [< : (-> Int Int Bool)]
-                        [inc : (-> (Box Int) (Box Int))]
-                        [take-int : (-> (Box Int) Int)]))
-
-(define- (inc b)
-  (#%app- set-box!- b (#%app- add1- (#%app- unbox- b)))
-  b)
-
-(define- (take-int b)
-  (#%app- unbox- b))
-
-
-
-
-;; test functions (TODO: put in another file)
-
-(provide check-type
-         check-linear)
-
-(require (for-syntax (prefix-in RU: rackunit))
-         (only-in racket/string string-contains?)
-         (only-in racket/function negate)
-         (prefix-in RU: rackunit))
-
-(define-typed-syntax check-type
-  #:datum-literals (: =)
-
-  [(_ e : t:type) ≫
-   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
-   #:do [(RU:check type=? #'t.norm #'τ
-                   (format "Type check failure ~a vs ~a"
-                           (type->str #'t.norm)
-                           (type->str #'τ)))
-         (linear #'{A})]
-   --------
-   [⊢ (#%app- RU:check-true '#t) (⇒ : Unit) (⇒ % Nop)]]
-
-  [(_ e #:fail) ≫
-   #:with r (with-handlers ([exn:fail? (lambda _
-                                         (syntax/loc #'e (#%app- RU:check-true '#t)))])
-              (syntax-parse '()
-                [([~⊢ e ≫ e- (⇒ : τ) (⇒ % A)])
-                 (syntax/loc #'e (#%app- RU:fail '"Expected type check failure"))]))
-   --------
-   [⊢ r (⇒ : Unit) (⇒ % Nop)]])
-
-
-(define-typed-syntax check-linear
-  [(_ e) ≫
-   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
-   #:do [(linear #'{A})]
-   --------
-   [⊢ (#%app- RU:check-true '#t) (⇒ : Unit) (⇒ % Nop)]]
-
-  [(_ e #:fail) ≫
-   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
-   #:with r (with-handlers ([exn:fail:syntax? (lambda _ (syntax/loc #'e
-                                                     (#%app- RU:check-true '#t)))])
-              (linear #'{A})
-              (syntax/loc #'e
-                (#%app- RU:fail '"expected linearity failure")))
-   --------
-   [⊢ r (⇒ : Unit) (⇒ % Nop)]]
-
-  [(_ e #:fail msg) ≫
-   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
-   #:with r (with-handlers ([exn:fail:syntax? (lambda (ex)
-                                                (quasisyntax/loc #'e
-                                                  (#%app- RU:check
-                                                          string-contains?
-                                                          '#,(exn-message ex)
-                                                          'msg
-                                                          '"expected failure message to match")))])
-              (linear #'{A})
-              (syntax/loc #'e
-                (#%app- RU:fail '"expected linearity failure")))
-   --------
-   [⊢ r (⇒ : Unit) (⇒ % Nop)]])
