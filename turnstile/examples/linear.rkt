@@ -16,7 +16,7 @@
 
 (provide (type-out Int Bool Unit Box × -> -o)
          #%datum box tup
-         begin #%app let if cond lambda
+         begin #%app let let-values if cond lambda
          #%top-interaction
          (rename-out [module-begin #%module-begin]
                      [lambda λ])
@@ -185,6 +185,30 @@
    [⊢ (let- ([x- rhs-] ...) e-)
       (⇒ : τ_out)
       (⇒ % (Then A ... x↑ ... B))]])
+
+
+(define-typed-syntax let-values
+  [(_ ([(x1:id x2:id) rhs] ...) e) ≫
+   [⊢ rhs ≫ rhs- (⇒ : (~× τ1 τ2)) (⇒ % A)] ...
+   #:with ((x1↑ x1↓) ...) (map mk-var-dual
+                               (syntax-e #'(x1 ...))
+                               (syntax-e #'(τ1 ...)))
+   #:with ((x2↑ x2↓) ...) (map mk-var-dual
+                               (syntax-e #'(x2 ...))
+                               (syntax-e #'(τ2 ...)))
+   [([x1 ≫ x1- : τ1 % x1↓] ...)
+    ([x2 ≫ x2- : τ2 % x2↓] ...)
+    ⊢ e ≫ e- (⇒ : τ_out) (⇒ % B)]
+
+   #:with (tmp ...) (generate-temporaries #'(x1 ...))
+   --------
+   [⊢ (let- ([tmp rhs-] ...)
+            (let-
+             ([x1- (#%app- car tmp)] ...
+              [x2- (#%app- cadr tmp)] ...)
+             e-))
+      (⇒ : τ_out)
+      (⇒ % (Then A ... x1↑ ... x2↑ ... B))]])
 
 
 

@@ -52,6 +52,12 @@
 (check-linear (λ ([p : (× Int (Box Int))]) ())
               #:fail "p: linear variable may be unused")
 
+(check-linear (let-values ([(x y) (tup (box #t) (box 0))])
+                (tup y x)))
+(check-linear (let-values ([(x y) (tup (box #t) (box 0))])
+                ())
+              #:fail "linear variable may be unused")
+
 
 ; typing checks
 (check-type 3 : Int)
