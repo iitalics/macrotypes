@@ -14,7 +14,7 @@
 (provide (type-out Int Bool Unit Box × -> -o)
          box tup
          #%datum let let-values if lambda
-         (rename-out [module-begin #%module-begin]
+         (rename-out [#%module-begin #%module-begin]
                      [top-interaction #%top-interaction]
                      [lambda λ])
          require)
@@ -88,16 +88,13 @@
   (syntax-parser
     [(_) (make-empty-lin-term)]
 
-    [(_ #:src s A)
+    [(_ #:src src A)
      #:with A- (expand-lin-term #'A)
      (for ([v (in-set (lin-used-vars #'A-))])
        (raise-syntax-error #f "linear variable not allowed in this context"
                            #'src
                            (syntax-property v 'orig)))
      (make-empty-lin-term)]))
-
-
-
 
 (define-syntax LSeq
   ; linear logic:  A ⅋ ...
@@ -113,7 +110,6 @@
                 (set-union used term-used)))])
        (make-lin-term used-vars))]))
 
-
 (define-syntax LIntro
   ; linear logic:  (A ⊗ ...) -o B
   (syntax-parser
@@ -122,13 +118,11 @@
                                ([term (in-list (syntax-e #'(A ...)))])
                        (set-union vars (lin-used-vars (expand-lin-term term))))]
            [used-vars (lin-used-vars (expand-lin-term #'B))])
-
        (for ([v (in-set (set-subtract new-vars used-vars))])
          (raise-syntax-error #f "linear variable unused"
                              #'src
                              (syntax-property v 'orig)))
        (make-lin-term (set-subtract used-vars new-vars)))]))
-
 
 (define-syntax LJoin
   ; linear logic:  A & B
@@ -251,11 +245,6 @@
 
 ;; redefine #%top-interaction and #%module-begin to check
 ;; linear terms after typechecking.
-
-(define-syntax module-begin
-  (syntax-parser
-    [(_ e ...)
-     #'(#%module-begin)]))
 
 (define-typed-syntax (top-interaction . e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
