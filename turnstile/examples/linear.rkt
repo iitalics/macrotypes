@@ -119,7 +119,7 @@
                        (set-union vars (lin-used-vars (expand-lin-term term))))]
            [used-vars (lin-used-vars (expand-lin-term #'B))])
        (for ([v (in-set (set-subtract new-vars used-vars))])
-         (raise-syntax-error #f "linear variable unused"
+        (raise-syntax-error #f "linear variable unused"
                              #'src
                              (syntax-property v 'orig)))
        (make-lin-term (set-subtract used-vars new-vars)))]))
@@ -273,8 +273,40 @@
 
 (define-typed-syntax (top-interaction . e) ≫
   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
-  #:do [(expand-lin-term #'(LNop #:src e A))]
   --------
   [≻ (#%app- printf '"~s : ~a\n"
              e-
              '#,(type->str #'τ))])
+
+
+
+
+
+;; testing
+
+(require rackunit
+         (for-syntax (only-in racket/string string-contains?)))
+
+(provide check-linear)
+
+(define-typed-syntax check-linear
+  [(_ e) ≫
+   [⊢ e ≫ e- (⇒ : τ) (⇒ % A)]
+   #:do [(expand-lin-term #'(LNop #:src e A))]
+   --------
+   [≻ (#%app- check-true '#t)]]
+
+  [(_ e #:fail msg) ≫
+   --------
+   [≻
+    #,(with-handlers
+        ([(and/c exn:fail:syntax?
+                 (lambda (ex)
+                   (string-contains? (exn-message ex)
+                                     (syntax-e #'msg))))
+          (lambda _
+            #'(#%app- check-true '#t))])
+        (syntax-parse '()
+          [((~⊢ e ≫ e- (⇒ : τ) (⇒ % A)))
+           (expand-lin-term #'(LNop #:src e A))
+           #'(#%app- fail '"expected failure, but expression succeeded.")]))]])
