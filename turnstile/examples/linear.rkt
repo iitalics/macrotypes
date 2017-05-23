@@ -13,7 +13,7 @@
 
 (provide (type-out Int Bool Unit Box × -> -o)
          box tup
-         #%datum #%app let let-values if lambda
+         #%datum #%app begin let let-values if lambda
          (rename-out [#%module-begin #%module-begin]
                      [top-interaction #%top-interaction]
                      [lambda λ])
@@ -158,6 +158,16 @@
   [(_ . k:boolean) ≫
    --------
    [⊢ 'k (⇒ : Bool) (⇒ % (LNop))]])
+
+
+(define-typed-syntax begin
+  [(_ e ... e1) ≫
+   [⊢ e ≫ e- (⇒ : _) (⇒ % A)] ...
+   [⊢ e1 ≫ e1- (⇒ : τ) (⇒ % B)]
+   --------
+   [⊢ (begin- e ... e1)
+      (⇒ : τ)
+      (⇒ % (LSeq A ... B))]])
 
 
 (define-typed-syntax box
