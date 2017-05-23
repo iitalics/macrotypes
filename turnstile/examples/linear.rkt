@@ -13,7 +13,7 @@
 
 (provide (type-out Int Bool Unit Box × -> -o)
          box tup
-         #%datum let let-values if lambda
+         #%datum #%app let let-values if lambda
          (rename-out [#%module-begin #%module-begin]
                      [top-interaction #%top-interaction]
                      [lambda λ])
@@ -167,6 +167,31 @@
    [⊢ (#%app- list- e1- e2-)
       (⇒ : (× τ1 τ2))
       (⇒ % (LSeq A B))]])
+
+
+(define-typed-syntax #%app
+  [(_) ≫
+   --------
+   [⊢ (#%app- void) (⇒ : Unit) (⇒ % (LNop))]]
+
+  [(_ fun arg ...) ≫
+   [⊢ fun ≫ fun-
+            (⇒ : (~or (~-> τ_in ... τ_out)
+                      (~-o τ_in ... τ_out)
+                      (~post (~and τ
+                                   (~fail (format "expected -> or -o type, got: ~a"
+                                                  (type->str #'τ)))))))
+            (⇒ % A)]
+   #:fail-unless (stx-length=? #'(τ_in ...)
+                               #'(arg ...))
+   "wrong number of arguments to function"
+
+   [⊢ arg ≫ arg- (⇒ : τ_arg) (⇒ % B)] ...
+   [τ_arg τ= τ_in #:for arg] ...
+   --------
+   [⊢ (#%app- fun- arg- ...)
+      (⇒ : τ_out)
+      (⇒ % (LSeq A B ...))]])
 
 
 (define-typed-syntax let
