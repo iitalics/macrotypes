@@ -66,7 +66,8 @@
 (check-type (λ once ([x : Int]) ()) : (-o Int Unit))
 (check-type (if #t 3 4) : Int)
 (typecheck-fail (if 4 3 4))
-
+(typecheck-fail (if #t 3 ()))
+(typecheck-fail ((lambda ([i : Int]) i) ()))
 
 #|
 ; standard functions test
