@@ -269,19 +269,31 @@
 
 
 (define-typed-syntax lambda
-  [(_ ([x:id (~datum :) t:type] ...) e) ≫
+  [(_ (~datum once) rest ...) ≫
    #:with here this-syntax
+   --------
+   [≻ (lambda-lin here #t rest ...)]]
+  [(_ rest ...) ≫
+   #:with here this-syntax
+   --------
+   [≻ (lambda-lin here #f rest ...)]])
+
+(define-typed-syntax lambda-lin
+  [(_ here lin? ([x:id (~datum :) t:type] ...) e) ≫
    #:with (τ ...) #'(t.norm ...)
    #:with (Lx ...) (map make-linear-var
                         (syntax-e #'(x ...))
                         (syntax-e #'(τ ...)))
    [[x ≫ x- : τ % Lx] ... ⊢ e ≫ e- (⇒ : τ_out) (⇒ % A)]
+   #:with Lbody #'(LIntro #:src here Lx ... A)
    --------
    [⊢ (λ- (x- ...) e-)
-      (⇒ : (-> τ ... τ_out))
-      (⇒ % (LNop #:src here
-                 (LIntro #:src here
-                         Lx ... A)))]])
+      (⇒ : #,(cond
+               [(syntax-e #'lin?) #'(-o τ ... τ_out)]
+               [else              #'(-> τ ... τ_out)]))
+      (⇒ % #,(cond
+               [(syntax-e #'lin?) #'Lbody]
+               [else #'(LNop #:src here Lbody)]))]])
 
 
 
