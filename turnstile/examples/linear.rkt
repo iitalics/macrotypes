@@ -76,6 +76,16 @@
     (make-lin-term (immutable-free-id-set)))
 
 
+
+  ;; symmetric difference implementation, because current impl for
+  ;; id-tables is bugged
+  (define (sym-dif s1 s2)
+    (for/fold ([s s1])
+              ([x (in-set s2)])
+      (if (free-id-set-member? s x)
+          (free-id-set-remove s x)
+          (free-id-set-add s x))))
+
   )
 
 
@@ -130,7 +140,7 @@
     [(_ #:src src A B)
      (let ([used-a (lin-used-vars (expand-lin-term #'A))]
            [used-b (lin-used-vars (expand-lin-term #'B))])
-       (for ([v (in-set (set-symmetric-difference used-a used-b))])
+       (for ([v (in-set (sym-dif used-a used-b))])
          (raise-syntax-error #f "linear variable may be unused"
                              #'src
                              (syntax-property v 'orig)))
