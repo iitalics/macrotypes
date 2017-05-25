@@ -53,14 +53,14 @@
   ;; I had two outputs on each rule: (⇒ : τ) for types and (⇒ % A) for variable usage.
   ;; The annoying thing about that is the problems arising when you want to declare/define
   ;; things and you have to attach something as a % property, or else try to deal with the #f
-  ;; property that you risk passing into (current-type-eval). At this point it seems like
-  ;; the version with (⇒ % A) is much cleaner and nicer than this version. Perhaps I can figure
+  ;; property that you risk passing into (current-type-eval). However if you look at this code,
+  ;; the version with (⇒ % A) is MUCH more clear and simple than this version. Perhaps I can figure
   ;; a way to tame the #f properties and revert back to that.
-  ;; However I'm very convinced that doing it that way is a much better strategy than trying to
+  ;; However I'm very convinced that doing either way is a much better strategy than trying to
   ;; split / modify / observe contexts since this way you have much more control than you would
   ;; otherwise. Of course basically every other example of linear typing uses context splitting
-  ;; and/or the algorithmic input/output context approach, so I guess that means we would have to
-  ;; prove congruence between the two.
+  ;; and/or the algorithmic input/output context approach, so this method is technically not proven
+  ;; to be sound etc.
 
 
 
