@@ -253,7 +253,7 @@
   [(_ _) ≫
    #:when [linear-sublanguage?]
    --------
-   [#:error "cannot use (lin _) within linear language"]]
+   [#:error "cannot use 'lin' within linear language"]]
 
   [(_ lin-expr) ≫
    #:when (not [linear-sublanguage?])
@@ -270,6 +270,7 @@
    [⊢ e- ⇒ σ]])
 
 
+
 (define-typed-syntax share
   [(_ e) ≫
    #:when [linear-sublanguage?]
@@ -279,4 +280,9 @@
    (format "cannot share type ~a" (type->str #'τ))
    #:with τ+ (type+var-set #'τ (type-var-set #'σ))
    --------
-   [⊢ e- ⇒ τ+]])
+   [⊢ e- ⇒ τ+]]
+
+  [(_ _) ≫
+   #:when (not [linear-sublanguage?])
+   --------
+   [#:error "cannot use 'share' outside of linear language"]])
