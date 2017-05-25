@@ -1,4 +1,4 @@
-#lang turnstile/lang
+#lang turnstile
 
 ; primitives
 (define-base-types Unit Int Bool Str)
@@ -33,8 +33,19 @@
   )
 
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
-         #%datum)
+         #%datum
+         tup
+         #%module-begin
+         (rename-out [top-interaction #%top-interaction]))
 
+
+
+(define-typed-syntax (top-interaction . e) ≫
+  [⊢ e ≫ e- ⇒ τ]
+  --------
+  [≻ (#%app- printf- "~s : ~a\n"
+             e-
+             '#,(type->str #'τ))])
 
 
 (define-typed-syntax #%datum
@@ -47,3 +58,12 @@
   [(_ . k:str) ≫
    --------
    [⊢ 'k ⇒ Str]])
+
+
+(define-typed-syntax tup
+  [(_ e ...) ≫
+   #:when (> (stx-length #'(e ...)) 1)
+   [⊢ e ≫ e- ⇒ σ] ...
+   --------
+   [⊢ (#%app- list- e- ...)
+      ⇒ (× σ ...)]])
