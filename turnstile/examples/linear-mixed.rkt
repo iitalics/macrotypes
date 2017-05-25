@@ -40,6 +40,22 @@
       [(~× τ ...)  ((current-type-eval) (syntax/loc ty (⊗ τ ...)))]
       [_ ty]))
 
+  (define (->unrestricted ty)
+    (syntax-parse ty
+      [(~-o σ ...)
+       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
+       ((current-type-eval) (syntax/loc ty (-> τ ...)))]
+      [(~-> σ ...)
+       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
+       ((current-type-eval) (syntax/loc ty (-> τ ...)))]
+      [(~⊗ σ ...)
+       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
+       ((current-type-eval) (syntax/loc ty (× τ ...)))]
+      [(~× σ ...)
+       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
+       ((current-type-eval) (syntax/loc ty (× τ ...)))]
+      [_ ty]))
+
 
 
   (define (empty-var-set)
@@ -54,7 +70,8 @@
 
   (define (type+linear-var ty src)
     (cond
-      [(unrestricted? ty) ty]
+      [(unrestricted? ty)
+       (type+var-set ty (empty-var-set))]
       [else
        (let ([id (put-props (generate-temporary src)
                             'orig src)])
@@ -97,6 +114,7 @@
          tup
          let let*
          lin
+         share
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
 
@@ -232,6 +250,11 @@
 
 
 (define-typed-syntax lin
+  [(_ _) ≫
+   #:when [linear-sublanguage?]
+   --------
+   [#:error "cannot use (lin _) within linear language"]]
+
   [(_ lin-expr) ≫
    #:when (not [linear-sublanguage?])
    #:with (e- σ)
@@ -243,6 +266,17 @@
    #:fail-unless (unrestricted? #'σ)
    (format "linear type ~a cannot leave linear boundary"
            (type->str #'σ))
-
    --------
    [⊢ e- ⇒ σ]])
+
+
+(define-typed-syntax share
+  [(_ e) ≫
+   #:when [linear-sublanguage?]
+   [⊢ e ≫ e- ⇒ σ]
+   #:with τ (->unrestricted #'σ)
+   #:fail-unless (unrestricted? #'τ)
+   (format "cannot share type ~a" (type->str #'τ))
+   #:with τ+ (type+var-set #'τ (type-var-set #'σ))
+   --------
+   [⊢ e- ⇒ τ+]])
