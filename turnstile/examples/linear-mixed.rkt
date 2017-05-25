@@ -15,6 +15,17 @@
 
 
 (begin-for-syntax
+  (require syntax/id-set)
+
+  ; put multiple syntax properties onto the given syntax object
+  ; (put-props stx key1 val1 key2 val2 ...) -> stx-
+  (define-syntax (put-props stx)
+    (syntax-case stx ()
+      [(_ expr key val . rst)
+       #'(put-props (syntax-property expr key val) . rst)]
+      [(_ expr)
+       #'expr]))
+
 
   (define unrestricted?
     (syntax-parser
@@ -30,11 +41,22 @@
       [_ ty]))
 
 
+
+  (define (type/linear-var ty src)
+    (cond
+      [(unrestricted? ty) ty]
+      [else
+       (let ([id (put-props (generate-temporary src)
+                            'orig src)])
+         (put-props ty
+                    '#%vars (immutable-free-id-set id)))]))
+
   )
 
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
          tup
+         let
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
 
@@ -67,3 +89,15 @@
    --------
    [⊢ (#%app- list- e- ...)
       ⇒ (× σ ...)]])
+
+
+(define-typed-syntax let
+  [(_ ([x rhs] ...) e) ≫
+   [⊢ rhs ≫ rhs- ⇒ σ] ...
+   #:with (σ+ ...) (stx-map type/linear-var
+                            #'(σ ...) #'(x ...))
+   [[x ≫ x- : σ+] ... ⊢ e ≫ e- ⇒ σ_out]
+   --------
+   [⊢ (let- ([x- rhs-] ...) e-)
+      ; TODO: introduce variable from σ+
+      ⇒ σ_out]])
