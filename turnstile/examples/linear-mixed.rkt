@@ -84,6 +84,10 @@
                             (syntax-property v 'orig)))
       (set-subtract V-body V-new)))
 
+
+  (define linear-sublanguage?
+    (make-parameter #f))
+
   )
 
 
@@ -92,6 +96,7 @@
          #%datum
          tup
          let let*
+         lin
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
 
@@ -121,19 +126,30 @@
    [⊢ 'k ⇒ Str]])
 
 
+
 (define-typed-syntax tup
   [(_ e ...) ≫
+   #:when [linear-sublanguage?]
    #:when (> (stx-length #'(e ...)) 1)
    [⊢ e ≫ e- ⇒ σ] ...
    #:with σ_tup #'(⊗ σ ...)
    #:with σ_tup+ (let ([Vs (map type-var-set (syntax-e #'(σ ...)))])
                    (type+var-set #'σ_tup (lin/seq Vs)))
    --------
-   [⊢ (#%app- list- e- ...) ⇒ σ_tup+]])
+   [⊢ (#%app- list- e- ...) ⇒ σ_tup+]]
+
+  ;;; [unrestricted]
+  [(_ e ... ) ≫
+   #:when (not [linear-sublanguage?])
+   [⊢ e ≫ e- ⇒ τ] ...
+   --------
+   [⊢ (#%app- list- e- ...) ⇒ (× τ ...)]])
+
 
 
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
+   #:when [linear-sublanguage?]
    [⊢ rhs ≫ rhs- ⇒ σ] ...
    #:with (σ/x ...) (stx-map type+linear-var
                              #'(σ ...) #'(x ...))
@@ -145,13 +161,22 @@
                                  (lin/seq (cons (lin/introduce Vs-vars #:in V-out)
                                                 Vs-rhs))))
    --------
-   [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out+]])
+   [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out+]]
+
+  ;;; [unrestricted]
+  [(_ ([x:id rhs] ...) e) ≫
+   #:when (not [linear-sublanguage?])
+   [⊢ rhs ≫ rhs- ⇒ τ] ...
+   [[x ≫ x- : τ] ... ⊢ e ≫ e- ⇒ τ_out]
+   --------
+   [⊢ (let- ([x- rhs-] ...) e-) ⇒ τ_out]])
+
 
 
 (define-typed-syntax let*
-  [(_ ([(x:id y:id) rhs]) ~! e) ≫
+  [(_ ([(x:id y:id) rhs]) e) ≫
+   #:when [linear-sublanguage?]
    [⊢ rhs ≫ rhs- ⇒ σ]
-
    #:with (~or (~⊗ σ1 σ2) (~post (~fail (format "cannot destructure non-pair type: ~a"
                                                 (type->str #'σ)))))
           (->linear #'σ)
@@ -175,6 +200,23 @@
               e-))
       ⇒ σ_out+]]
 
+  ;;; [unrestricted]
+  [(_ ([(x:id y:id) rhs]) e) ≫
+   #:when (not [linear-sublanguage?])
+   [⊢ rhs ≫ rhs- ⇒ τ]
+   #:with (~or (~× τ1 τ2) (~post (~fail (format "cannot destructure non-pair type: ~a"
+                                                (type->str #'τ)))))
+          #'τ
+
+   [[x ≫ x- : τ1] [y ≫ y- : τ2] ⊢ e ≫ e- ⇒ τ_out]
+   #:with tmp (generate-temporary #'rhs)
+   --------
+   [⊢ (let- ([tmp rhs-])
+            (let- ([x- (#%app- car tmp)]
+                   [y- (#%app- cadr tmp)])
+              e-))
+      ⇒ τ_out]]
+
 
   [(_ () e) ≫
    --------
@@ -182,6 +224,25 @@
   [(_ ([x:id r] vs ...) e) ≫
    --------
    [≻ (let ([x r]) (let* (vs ...) e))]]
-  [(_ ([(x:id y:id) r] vs ...) e) ≫
+  [(_ ([(x:id y:id) r] vs ...+) e) ≫
    --------
    [≻ (let* ([(x y) r]) (let* (vs ...) e))]])
+
+
+
+
+(define-typed-syntax lin
+  [(_ lin-expr) ≫
+   #:when (not [linear-sublanguage?])
+   #:with (e- σ)
+   (parameterize ([linear-sublanguage? #t])
+     (syntax-parse #'lin-expr
+       [(~and e [~⊢ e ≫ e- ⇒ σ])
+        #'(e- σ)]))
+
+   #:fail-unless (unrestricted? #'σ)
+   (format "linear type ~a cannot leave linear boundary"
+           (type->str #'σ))
+
+   --------
+   [⊢ e- ⇒ σ]])
