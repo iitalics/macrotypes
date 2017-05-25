@@ -45,30 +45,48 @@
   (define (empty-var-set)
     (immutable-free-id-set))
 
-  (define (type/linear-var ty src)
+  (define (type-var-set ty)
+    (or (syntax-property ty '#%vars)
+        (empty-var-set)))
+
+  (define (type+var-set ty vars)
+    (syntax-property ty '#%vars vars))
+
+  (define (type+linear-var ty src)
     (cond
       [(unrestricted? ty) ty]
       [else
        (let ([id (put-props (generate-temporary src)
                             'orig src)])
-         (put-props ty
-                    '#%vars (immutable-free-id-set (list id))))]))
-
-  (define (type-var-set ty)
-    (or (syntax-property ty '#%vars)
-        (empty-var-set)))
-
-  (define (type-put-vars ty vars)
-    (put-props ((current-type-eval) ty)
-               '#%vars vars))
+         ; NOTE: id does NOT BECOME REAL SYNTAX
+         ;       it's just used to keep track of a linear variable's usage
+         ;       i'm essentially just using free-id-set's because racket has
+         ;       pretty weak hash-table operations (e.g. intersect, union)
+         ;       compared to sets
+         (type+var-set ty (immutable-free-id-set (list id))))]))
 
 
-  ; this must be used for expansion instead of (current-type-eval) because
-  ; the latter adds things to 'orig that we don't want.
-  (define (linear-expand ty)
-    (local-expand ty 'expression '()))
+
+  (define (lin/seq Vs)
+    (for/fold ([acc (empty-var-set)])
+              ([V (in-list Vs)])
+      (for ([v (in-set (set-intersect V acc))])
+        (raise-syntax-error #f
+                            "linear variable used more than once"
+                            (syntax-property v 'orig)))
+      (set-union V acc)))
+
+  (define (lin/introduce Vs #:in V-body)
+    (let ([V-new (foldl set-union (empty-var-set) Vs)])
+      (for ([v (in-set (set-subtract V-new V-body))])
+        (raise-syntax-error #f
+                            "linear variable unused"
+                            (syntax-property v 'orig)))
+      (set-subtract V-body V-new)))
 
   )
+
+
 
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
@@ -77,35 +95,6 @@
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
 
-
-; macros for combining linear information encoded in types
-
-(define-syntax lin/seq
-  (syntax-parser
-    [(_ σ ... #:as σ_out)
-     (let ([var-sets (map type-var-set (syntax-e #'(σ ...)))])
-       (type-put-vars #'σ_out
-                      (for/fold ([vars (empty-var-set)])
-                                    ([vs (in-list var-sets)])
-                            (for ([v (in-set (set-intersect vs vars))])
-                              (raise-syntax-error #f
-                                                  "linear variable used more than once"
-                                                  (syntax-property v 'orig)))
-                            (set-union vs vars))))]))
-
-(define-syntax lin/introduce
-  (syntax-parser
-    [(_ σ ... #:in σ_body #:as σ_out)
-     (let* ([new-vars (for/fold ([new-vars (empty-var-set)])
-                                ([t (in-list (syntax-e #'(σ ...)))])
-                        (set-union new-vars (type-var-set t)))]
-            [body-vars (type-var-set #'σ_body)])
-       (for ([v (in-set (set-subtract new-vars body-vars))])
-         (raise-syntax-error #f
-                             "linear variable unused"
-                             (syntax-property v 'orig)))
-       (type-put-vars #'σ_out
-                      (set-subtract body-vars new-vars)))]))
 
 
 
@@ -120,7 +109,6 @@
              '#,(type->str #'σ))])
 
 
-
 (define-typed-syntax #%datum
   [(_ . k:exact-integer) ≫
    --------
@@ -133,27 +121,28 @@
    [⊢ 'k ⇒ Str]])
 
 
-
 (define-typed-syntax tup
   [(_ e ...) ≫
    #:when (> (stx-length #'(e ...)) 1)
    [⊢ e ≫ e- ⇒ σ] ...
-   #:with σ_out+ (linear-expand
-                  #'(lin/seq σ ... #:as (⊗ σ ...)))
+   #:with σ_tup #'(⊗ σ ...)
+   #:with σ_tup+ (let ([Vs (map type-var-set (syntax-e #'(σ ...)))])
+                   (type+var-set #'σ_tup (lin/seq Vs)))
    --------
-   [⊢ (#%app- list- e- ...) ⇒ σ_out+]])
-
+   [⊢ (#%app- list- e- ...) ⇒ σ_tup+]])
 
 
 (define-typed-syntax let
-  [(_ ([x rhs] ...) e) ≫
+  [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
-   #:with (σ+ ...) (stx-map type/linear-var
-                            #'(σ ...) #'(x ...))
-   [[x ≫ x- : σ+] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:with σ_out+ (linear-expand
-                  #'(lin/introduce σ+ ...
-                                   #:in σ_out
-                                   #:as σ_out))
+   #:with (σ/x ...) (stx-map type+linear-var
+                             #'(σ ...) #'(x ...))
+   [[x ≫ x- : σ/x] ... ⊢ e ≫ e- ⇒ σ_out]
+   #:with σ_out+ (let ([Vs-rhs (map type-var-set (syntax-e #'(σ ...)))]
+                       [Vs-vars (map type-var-set (syntax-e #'(σ/x ...)))]
+                       [V-out (type-var-set #'σ_out)])
+                   (type+var-set #'σ_out
+                                 (lin/seq (cons (lin/introduce Vs-vars #:in V-out)
+                                                Vs-rhs))))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out+]])
