@@ -26,7 +26,45 @@
       [(_ expr)
        #'expr]))
 
+  ;; symmetric difference implementation, because current impl for
+  ;; id-tables is bugged
+  (define (sym-dif s1 s2)
+    (for/fold ([s s1])
+              ([x (in-set s2)])
+      (if (free-id-set-member? s x)
+          (free-id-set-remove s x)
+          (free-id-set-add s x))))
 
+
+  ; parameter to be set while expanding code that is in the linear
+  ; sublanguage (within a (lin ...) form)
+  (define linear-sublanguage?
+    (make-parameter #f))
+
+  ;;;; In the "linear sublanguage", you can attach to an output type the
+  ;;;; property #%var, which contains a set of the variables (notation: V)
+  ;;;; used by the expression that produced that type. You can retrieve
+  ;;;; the set safely using (var-set #'σ) or put a new set using (+var-set #'σ V).
+  ;;;; Operations on these sets are prefixed with lin/, e.g. lin/seq and lin/introduce.
+  ;;;; A type with a set attached to it is usually notated σ+ as opposed to just σ.
+
+  ;; THOUGHTS
+  ;; I'm not sure if this is the best way to accomplish this. In the other linear language
+  ;; I had two outputs on each rule: (⇒ : τ) for types and (⇒ % A) for variable usage.
+  ;; The annoying thing about that is the problems arising when you want to declare/define
+  ;; things and you have to attach something as a % property, or else try to deal with the #f
+  ;; property that you risk passing into (current-type-eval). At this point it seems like
+  ;; the version with (⇒ % A) is much cleaner and nicer than this version. Perhaps I can figure
+  ;; a way to tame the #f properties and revert back to that.
+  ;; However I'm very convinced that doing it that way is a much better strategy than trying to
+  ;; split / modify / observe contexts since this way you have much more control than you would
+  ;; otherwise. Of course basically every other example of linear typing uses context splitting
+  ;; and/or the algorithmic input/output context approach, so I guess that means we would have to
+  ;; prove congruence between the two.
+
+
+
+  ; is the given type unrestricted?
   (define unrestricted?
     (syntax-parser
       [(~or ~Unit ~Int ~Bool ~Str) #t]
@@ -34,12 +72,17 @@
       [(~× τ ...)  (andmap unrestricted? (syntax-e #'(τ ...)))]
       [_ #f]))
 
+  ; convert an unrestricted type to a linear type (shallow, only affects type
+  ; constructor)
   (define (->linear ty)
     (syntax-parse ty
       [(~-> τ ...) ((current-type-eval) (syntax/loc ty (-o τ ...)))]
       [(~× τ ...)  ((current-type-eval) (syntax/loc ty (⊗ τ ...)))]
       [_ ty]))
 
+  ; attempt to convert a linear type into an unrestricted type.
+  ; if (unrestricted? tyl) is #f, where tyl is the result of this function, then
+  ; the type could not be converted (e.g. if it contains the (Box _) type)
   (define (->unrestricted ty)
     (syntax-parse ty
       [(~-o σ ...)
@@ -58,16 +101,27 @@
 
 
 
+
+  ; returns a set containing no variables
   (define (empty-var-set)
     (immutable-free-id-set))
 
+  ; gets the variable set attached to a type (or empty if none attached)
   (define (var-set ty)
     (or (syntax-property ty '#%vars)
         (empty-var-set)))
 
-  (define (+var-set ty vars)
-    (syntax-property ty '#%vars vars))
+  ; attach the variable set V to the type ty
+  (define (+var-set ty V)
+    (syntax-property ty '#%vars V))
 
+  ; attach a single variable to a type if the given type is linear,
+  ; otherwise attach nothing. use this + lin/introduce whenever introducing
+  ; new linear variables into a context, e.g.
+  ;   #:with σ/x (+linear-var #'σ #'x)
+  ;   [[x ≫ x- : σ/x] ⊢ e ≫ e- ⇒ σ_out]
+  ;   #:with σ+ (+var+set #'σ_out
+  ;                       (lin/introduce (list #'σ/x) #:in #'σ_out))
   (define (+linear-var ty src)
     (cond
       [(unrestricted? ty)
@@ -84,6 +138,9 @@
 
 
 
+  ; combine a list of variable sets as if they result from seperately
+  ; evaluated expression that need to be sequenced. this means that any
+  ; variables used twice will cause an error.
   (define (lin/seq Vs)
     (for/fold ([acc (empty-var-set)])
               ([V (in-list Vs)])
@@ -93,6 +150,8 @@
                             (syntax-property v 'orig)))
       (set-union V acc)))
 
+  ; introduce all variables in Vs into the variable set V-body, meaning
+  ; that an error will occur if any variables in any of Vs are not used in V-body.
   (define (lin/introduce Vs #:in V-body)
     (let ([V-new (foldl set-union (empty-var-set) Vs)])
       (for ([v (in-set (set-subtract V-new V-body))])
@@ -101,9 +160,16 @@
                             (syntax-property v 'orig)))
       (set-subtract V-body V-new)))
 
+  ; merge to variable sets that should be equivalent, e.g. in the results of
+  ; branching expressions.
+  (define (lin/join V1 V2)
+    (for ([v (in-set (sym-diff V1 V2))])
+      (raise-syntax-error #f
+                          "linear variable may be unused"
+                          (syntax-property v 'orig)))
+    V1)
 
-  (define linear-sublanguage?
-    (make-parameter #f))
+
 
   )
 
