@@ -61,17 +61,17 @@
   (define (empty-var-set)
     (immutable-free-id-set))
 
-  (define (type-var-set ty)
+  (define (var-set ty)
     (or (syntax-property ty '#%vars)
         (empty-var-set)))
 
-  (define (type+var-set ty vars)
+  (define (+var-set ty vars)
     (syntax-property ty '#%vars vars))
 
-  (define (type+linear-var ty src)
+  (define (+linear-var ty src)
     (cond
       [(unrestricted? ty)
-       (type+var-set ty (empty-var-set))]
+       (+var-set ty (empty-var-set))]
       [else
        (let ([id (put-props (generate-temporary src)
                             'orig src)])
@@ -80,7 +80,7 @@
          ;       i'm essentially just using free-id-set's because racket has
          ;       pretty weak hash-table operations (e.g. intersect, union)
          ;       compared to sets
-         (type+var-set ty (immutable-free-id-set (list id))))]))
+         (+var-set ty (immutable-free-id-set (list id))))]))
 
 
 
@@ -151,8 +151,8 @@
    #:when (> (stx-length #'(e ...)) 1)
    [⊢ e ≫ e- ⇒ σ] ...
    #:with σ_tup #'(⊗ σ ...)
-   #:with σ_tup+ (let ([Vs (map type-var-set (syntax-e #'(σ ...)))])
-                   (type+var-set #'σ_tup (lin/seq Vs)))
+   #:with σ_tup+ (let ([Vs (map var-set (syntax-e #'(σ ...)))])
+                   (+var-set #'σ_tup (lin/seq Vs)))
    --------
    [⊢ (#%app- list- e- ...) ⇒ σ_tup+]]
 
@@ -169,15 +169,15 @@
   [(_ ([x:id rhs] ...) e) ≫
    #:when [linear-sublanguage?]
    [⊢ rhs ≫ rhs- ⇒ σ] ...
-   #:with (σ/x ...) (stx-map type+linear-var
+   #:with (σ/x ...) (stx-map +linear-var
                              #'(σ ...) #'(x ...))
    [[x ≫ x- : σ/x] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:with σ_out+ (let ([Vs-rhs (map type-var-set (syntax-e #'(σ ...)))]
-                       [Vs-vars (map type-var-set (syntax-e #'(σ/x ...)))]
-                       [V-out (type-var-set #'σ_out)])
-                   (type+var-set #'σ_out
-                                 (lin/seq (cons (lin/introduce Vs-vars #:in V-out)
-                                                Vs-rhs))))
+   #:with σ_out+ (let ([Vs-rhs (map var-set (syntax-e #'(σ ...)))]
+                       [Vs-vars (map var-set (syntax-e #'(σ/x ...)))]
+                       [V-out (var-set #'σ_out)])
+                   (+var-set #'σ_out
+                             (lin/seq (cons (lin/introduce Vs-vars #:in V-out)
+                                            Vs-rhs))))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out+]]
 
@@ -198,24 +198,24 @@
    #:with (~or (~⊗ σ1 σ2) (~post (~fail (format "cannot destructure non-pair type: ~a"
                                                 (type->str #'σ)))))
           (->linear #'σ)
-   #:with σ/x (type+linear-var #'σ1 #'x)
-   #:with σ/y (type+linear-var #'σ2 #'y)
+   #:with σ/x (+linear-var #'σ1 #'x)
+   #:with σ/y (+linear-var #'σ2 #'y)
 
    [[x ≫ x- : σ/x] [y ≫ y- : σ/y] ⊢ e ≫ e- ⇒ σ_out]
-   #:with σ_out+ (let ([V-rhs (type-var-set #'σ)]
-                       [V-x (type-var-set #'σ/x)]
-                       [V-y (type-var-set #'σ/y)]
-                       [V-out (type-var-set #'σ_out)])
-                   (type+var-set #'σ_out
-                                 (lin/seq
-                                  (list V-rhs (lin/introduce (list V-x V-y)
-                                                             #:in V-out)))))
+   #:with σ_out+ (let ([V-rhs (var-set #'σ)]
+                       [V-x (var-set #'σ/x)]
+                       [V-y (var-set #'σ/y)]
+                       [V-out (var-set #'σ_out)])
+                   (+var-set #'σ_out
+                             (lin/seq
+                              (list V-rhs (lin/introduce (list V-x V-y)
+                                                         #:in V-out)))))
    #:with tmp (generate-temporary #'rhs)
    --------
    [⊢ (let- ([tmp rhs-])
             (let- ([x- (#%app- car tmp)]
                    [y- (#%app- cadr tmp)])
-              e-))
+                  e-))
       ⇒ σ_out+]]
 
   ;;; [unrestricted]
@@ -224,7 +224,7 @@
    [⊢ rhs ≫ rhs- ⇒ τ]
    #:with (~or (~× τ1 τ2) (~post (~fail (format "cannot destructure non-pair type: ~a"
                                                 (type->str #'τ)))))
-          #'τ
+   #'τ
 
    [[x ≫ x- : τ1] [y ≫ y- : τ2] ⊢ e ≫ e- ⇒ τ_out]
    #:with tmp (generate-temporary #'rhs)
@@ -232,7 +232,7 @@
    [⊢ (let- ([tmp rhs-])
             (let- ([x- (#%app- car tmp)]
                    [y- (#%app- cadr tmp)])
-              e-))
+                  e-))
       ⇒ τ_out]]
 
 
@@ -278,7 +278,7 @@
    #:with τ (->unrestricted #'σ)
    #:fail-unless (unrestricted? #'τ)
    (format "cannot share type ~a" (type->str #'τ))
-   #:with τ+ (type+var-set #'τ (type-var-set #'σ))
+   #:with τ+ (+var-set #'τ (var-set #'σ))
    --------
    [⊢ e- ⇒ τ+]]
 
