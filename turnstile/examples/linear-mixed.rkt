@@ -29,4 +29,21 @@
       [(× τ ...)  ((current-type-eval) (syntax/loc ty (⊗ τ ...)))]
       [_ ty]))
 
+
   )
+
+(provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
+         #%datum)
+
+
+
+(define-typed-syntax #%datum
+  [(_ . k:exact-integer) ≫
+   --------
+   [⊢ 'k ⇒ Int]]
+  [(_ . k:boolean) ≫
+   --------
+   [⊢ 'k ⇒ Bool]]
+  [(_ . k:str) ≫
+   --------
+   [⊢ 'k ⇒ Str]])
