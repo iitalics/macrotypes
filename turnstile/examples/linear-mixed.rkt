@@ -91,7 +91,7 @@
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
          tup
-         let
+         let let*
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
 
@@ -146,3 +146,42 @@
                                                 Vs-rhs))))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out+]])
+
+
+(define-typed-syntax let*
+  [(_ ([(x:id y:id) rhs]) ~! e) ≫
+   [⊢ rhs ≫ rhs- ⇒ σ]
+
+   #:with (~or (~⊗ σ1 σ2) (~post (~fail (format "cannot destructure non-pair type: ~a"
+                                                (type->str #'σ)))))
+          (->linear #'σ)
+   #:with σ/x (type+linear-var #'σ1 #'x)
+   #:with σ/y (type+linear-var #'σ2 #'y)
+
+   [[x ≫ x- : σ/x] [y ≫ y- : σ/y] ⊢ e ≫ e- ⇒ σ_out]
+   #:with σ_out+ (let ([V-rhs (type-var-set #'σ)]
+                       [V-x (type-var-set #'σ/x)]
+                       [V-y (type-var-set #'σ/y)]
+                       [V-out (type-var-set #'σ_out)])
+                   (type+var-set #'σ_out
+                                 (lin/seq
+                                  (list V-rhs (lin/introduce (list V-x V-y)
+                                                             #:in V-out)))))
+   #:with tmp (generate-temporary #'rhs)
+   --------
+   [⊢ (let- ([tmp rhs-])
+            (let- ([x- (#%app- car tmp)]
+                   [y- (#%app- cadr tmp)])
+              e-))
+      ⇒ σ_out+]]
+
+
+  [(_ () e) ≫
+   --------
+   [≻ e]]
+  [(_ ([x:id r] vs ...) e) ≫
+   --------
+   [≻ (let ([x r]) (let* (vs ...) e))]]
+  [(_ ([(x:id y:id) r] vs ...) e) ≫
+   --------
+   [≻ (let* ([(x y) r]) (let* (vs ...) e))]])
