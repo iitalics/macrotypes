@@ -36,6 +36,14 @@
           (free-id-set-add s x))))
 
 
+  ;; like split-at but on syntax objects, and returns a list instead
+  ;; of values
+  (define (stx-split-at stx pos)
+    (let-values ([(a b) (split-at (syntax->list stx) pos)])
+      (list (datum->syntax stx a)
+            (datum->syntax stx b))))
+
+
   ; parameter to be set while expanding code that is in the linear
   ; sublanguage (within a (lin ...) form)
   (define linear-sublanguage?
@@ -88,7 +96,7 @@
        #:with (e ...) es
        (syntax-parse (local-expand #'(#%plain-lambda
                                       (x ...)
-                                      (with-new-linear-vars (x ...)
+                                      (with-new-linear-vars ([x ty] ...)
                                         (let-syntax ([x (make-linear-var-transformer #`ty `tag #`x)] ...)
                                           (#%expression e) ...)))
                                    'expression
@@ -107,26 +115,26 @@
 
   )
 
-; syntax: (with-new-linear-vars (x ...) body)
-; introduces x... as new linear variables in the context of 'body', and
-; checks to make sure all variables were used in the body. this macro is
-; used by infer/linear.
 (define-syntax with-new-linear-vars
   (syntax-parser
-    [(_ (x- ...) body)
-     (let ([xs (immutable-free-id-set (syntax-e #'(x- ...)))])
+    [(_ ([x σ] ...) body)
+     (let ([lxs (immutable-free-id-set
+                 (for/list ([x (in-syntax #'(x ...))]
+                            [t (in-syntax #'(σ ...))]
+                            #:when (not (unrestricted? ((current-type-eval) t))))
+                   x))])
        (parameterize ([current-linear-context
-                       (set-union [current-linear-context] xs)])
+                       (set-union [current-linear-context] lxs)])
          (let ([body- (local-expand #'body 'expression '())])
-           (for ([x (in-set (set-intersect [current-linear-context] xs))])
-             (raise-syntax-error #f "linear variable unused" x))
+           (for ([u (in-set (set-intersect [current-linear-context] lxs))])
+             (raise-syntax-error #f "linear variable unused" u))
            body-)))]))
 
 
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
-         begin let
-         box
+         begin let let*
+         box tup
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
 
@@ -156,6 +164,21 @@
    [⊢ 'k ⇒ Str]])
 
 
+(define-typed-syntax box
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ σ]
+   --------
+   [⊢ (#%app- box- e-) ⇒ (Box σ)]])
+
+
+(define-typed-syntax tup
+  [(_ e1 e2) ≫
+   [⊢ e1 ≫ e1- ⇒ σ1]
+   [⊢ e2 ≫ e2- ⇒ σ2]
+   --------
+   [⊢ (#%app- list- e1- e2-) ⇒ (⊗ σ1 σ2)]])
+
+
 (define-typed-syntax begin
   [(_ e ...) ≫
    [⊢ e ≫ e- ⇒ σ] ...
@@ -167,14 +190,28 @@
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
-   #:with ((x- ...) (σ_out) (e-))
-   (infer/linear #'(e) #'([x : σ] ...))
+   #:with ((x- ...) (σ_out) (e-)) (infer/linear #'(e) #'([x : σ] ...))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
 
 
-(define-typed-syntax box
-  [(_ e) ≫
-   [⊢ e ≫ e- ⇒ σ]
+(define-typed-syntax let*
+  [(_ ([(x:id y:id) rhs] rest ...) e) ≫
+   [⊢ rhs ≫ rhs- ⇒ σ]
+   #:with (~or (~⊗ σ1 σ2)
+               (~post (~fail (format "cannot destructure non-pair type ~a"
+                                     (type->str #'σ)))))  #'σ
+   #:with ((x- y-) (σ_out) (e-)) (infer/linear #'((let* (rest ...) e)) #'([x : σ1] [y : σ2]))
+   #:with tmp (generate-temporary #'rhs)
    --------
-   [⊢ (#%app- box- e-) ⇒ (Box σ)]])
+   [⊢ (let*- ([tmp rhs-]
+              [x- (#%app- car tmp)]
+              [y- (#%app- cadr tmp)]) e-)
+      ⇒ σ_out]]
+
+  [(_ ([x:id rhs] rest ...) e) ≫
+   --------
+   [≻ (let ([x rhs]) (let* (rest ...) e))]]
+  [(_ () e) ≫
+   --------
+   [≻ e]])
