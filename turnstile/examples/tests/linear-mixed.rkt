@@ -3,4 +3,4 @@
 (let ([x (box 2)])
   (if #t
       x
-      (begin x (box 0))))
+      (begin (box 0))))

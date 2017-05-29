@@ -60,14 +60,30 @@
       [_ #f]))
 
 
+  ; pattern expanders for dual types (e.g. ×/⊗ and ->/-o)
+  (define-syntax ~pair
+    (pattern-expander
+     (lambda (stx)
+       (syntax-case stx ()
+         [(_ a b) #'(~or (~× a b) (~⊗ a b))]))))
+
+  (define-syntax ~fun
+    (pattern-expander
+     (lambda (stx)
+       (syntax-case stx ()
+         [(_ a ...) #'(~or (~-> a ...) (~-o a ...))]))))
+
+
+
+
   ; set of current unused linear variables in context
   (define unused-lin-vars
     (immutable-free-id-set))
 
 
   ; like make-variable-like-transformer, but for linear variables
-  (define (make-linear-var-transformer ty tag x)
-    (define ty- ((current-type-eval) ty))
+  (define (make-linear-var-transformer ty-stx tag x)
+    (define ty ((current-type-eval) ty-stx))
     (syntax-parser
       [:id
        (cond
@@ -76,6 +92,7 @@
           (set! unused-lin-vars (set-remove unused-lin-vars x))
           (put-props x tag ty)]
          [else
+          (displayln (set->list unused-lin-vars))
           (raise-syntax-error #f "linear variable used more than once" this-syntax)])]
 
       [(id . args)
@@ -114,7 +131,12 @@
 
   ; infer the type of every expression in es, but expect the linear variable
   ; usage in each expression to be the same.
-  (define (infer/branch es)
+  (define (infer/branch es
+                        #:err [err (lambda (u expr)
+                                     (raise-syntax-error #f
+                                                         "linear variable may be unused"
+                                                         u
+                                                         expr))])
     (define ulv unused-lin-vars)
     (match (map (lambda (e)
                   (set! unused-lin-vars ulv)
@@ -122,11 +144,16 @@
                     [(_ (σ) (e-))
                      (list #'σ #'e- unused-lin-vars)]))
                 (syntax->list es))
-      [(list (list ts es ulvs) ...)
-       (for ([u (in-set (apply sym-dif ulvs))])
-         (raise-syntax-error #f "linear variable may be unused" u))
+      [(list (list ts es- ulvs) ...)
+
+       (let ([similar (apply set-intersect ulvs)])
+         (for ([src (in-syntax es)]
+               [ulv (in-list ulvs)])
+           (for ([v (in-set (set-subtract ulv similar))])
+             (err v src))))
+
        (set! unused-lin-vars (first ulvs))
-       (list ts es)]))
+       (list ts es-)]))
 
   )
 
@@ -147,16 +174,23 @@
 
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
-         begin let let* if
+         begin let let* if #%app lambda
          box tup
          #%module-begin
-         (rename-out [top-interaction #%top-interaction]))
+         (rename-out [top-interaction #%top-interaction]
+                     [lambda λ]))
 
 
 
 
 
 ; typed syntax
+
+(provide (typed-out [[THING : (× Int Int)] THING]
+                    [+ : (-> Int Int Int)]))
+(define THING '(1 2))
+
+
 
 (define-typed-syntax (top-interaction . e) ≫
   [⊢ e ≫ e- ⇒ σ]
@@ -201,7 +235,7 @@
    [⊢ (begin- e- ...) ⇒ σ_out]])
 
 
-(define-typed-syntax let
+ (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
    #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{e} #'([x : σ] ...))
@@ -212,7 +246,7 @@
 (define-typed-syntax let*
   [(_ ([(x:id y:id) rhs] rest ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ]
-   #:with (~or (~⊗ σ1 σ2)
+   #:with (~or (~pair σ1 σ2)
                (~post (~fail (format "cannot destructure non-pair type ~a"
                                      (type->str #'σ)))))  #'σ
    #:with ((x- y-) (σ_out) (e-)) (infer/lin-vars #'{(let* (rest ...) e)} #'([x : σ1] [y : σ2]))
@@ -231,7 +265,6 @@
    [≻ e]])
 
 
-
 (define-typed-syntax if
   [(_ e1 e2 e3) ≫
    [⊢ e1 ≫ e1- ⇒ ~Bool]
@@ -239,3 +272,26 @@
    [σ2 τ= σ1 #:for e2]
    --------
    [⊢ (if- e1- e2- e3-) ⇒ σ1]])
+
+
+(define-typed-syntax #%app
+  [(_ fun arg ...) ≫
+   [⊢ fun ≫ fun- ⇒ σ_fun]
+   #:with (~fun σ_in ... σ_out) #'σ_fun
+   #:fail-unless (stx-length=? #'(σ_in ...) #'(arg ...))
+   (format "wrong number of arguments to function, expected ~a, got ~a"
+           (stx-length #'(σ_in ...))
+           (stx-length #'(arg ...)))
+
+   [⊢ arg ≫ arg- ⇒ σ_arg] ...
+   [σ_arg τ= σ_in #:for arg] ...
+   --------
+   [⊢ (#%app- fun- arg- ...) ⇒ σ_out]])
+
+
+(define-typed-syntax lambda
+  [(_ ([x:id (~datum :) ty:type] ...) body) ≫
+   #:with ((x- ...) (σ_out) (body-)) (infer/lin-vars #'{body}
+                                                     #'([x : ty] ...))
+   --------
+   [⊢ (λ- (x- ...) body-) ⇒ (-o ty.norm ... σ_out)]])
