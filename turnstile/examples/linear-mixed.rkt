@@ -10,9 +10,12 @@
 ; linear
 (define-type-constructor -o #:arity >= 1)
 (define-type-constructor ⊗ #:arity > 1)
-(define-base-type Loc)
 (define-type-constructor Box #:arity = 1)
+(define-base-type Loc)
 
+
+;; TODO: custom constructor for linear types, e.g.
+; (define-linear-type ⊗ #:arity >= 1 #:dual ×)
 
 (begin-for-syntax
   (require syntax/id-set)
@@ -37,19 +40,6 @@
           (free-id-set-add s x))))
 
 
-  ;; like split-at but on syntax objects, and returns a list instead
-  ;; of values
-  (define (stx-split-at stx pos)
-    (let-values ([(a b) (split-at (syntax->list stx) pos)])
-      (list (datum->syntax stx a)
-            (datum->syntax stx b))))
-
-
-  ; parameter to be set while expanding code that is in the linear
-  ; sublanguage (within a (lin ...) form)
-  (define linear-sublanguage?
-    (make-parameter #f))
-
 
   ; is the given type unrestricted?
   (define unrestricted?
@@ -58,6 +48,22 @@
       [(~-> τ ...) (andmap unrestricted? (syntax-e #'(τ ...)))]
       [(~× τ ...)  (andmap unrestricted? (syntax-e #'(τ ...)))]
       [_ #f]))
+
+  ; convert linear type to unrestricted type, or return #f if
+  ; not possible
+  (define (linear->unrestricted ty)
+    (let/ec ec
+      ((current-type-eval)
+       (let l->u ([ty ty])
+         (syntax-parse ty
+           [(~-o σ ...)
+            #:with (τ ...) (stx-map l->u #'(σ ...))
+            (syntax/loc ty (-> τ ...))]
+           [(~⊗ σ ...)
+            #:with (τ ...) (stx-map l->u #'(σ ...))
+            (syntax/loc ty (× τ ...))]
+           [(~or ~Loc (~Box _)) (ec #f)]
+           [_ ty])))))
 
 
   ; pattern expanders for dual types (e.g. ×/⊗ and ->/-o)
@@ -92,7 +98,6 @@
           (set! unused-lin-vars (set-remove unused-lin-vars x))
           (put-props x tag ty)]
          [else
-          (displayln (set->list unused-lin-vars))
           (raise-syntax-error #f "linear variable used more than once" this-syntax)])]
 
       [(id . args)
@@ -175,6 +180,7 @@
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
          begin let let* if #%app lambda
+         share
          box tup
          #%module-begin
          (rename-out [top-interaction #%top-interaction]
@@ -275,6 +281,10 @@
 
 
 (define-typed-syntax #%app
+  [(_) ≫
+   --------
+   [⊢ (#%app- void-) ⇒ Unit]]
+
   [(_ fun arg ...) ≫
    [⊢ fun ≫ fun- ⇒ σ_fun]
    #:with (~fun σ_in ... σ_out) #'σ_fun
@@ -295,3 +305,18 @@
                                                      #'([x : ty] ...))
    --------
    [⊢ (λ- (x- ...) body-) ⇒ (-o ty.norm ... σ_out)]])
+
+
+(define-typed-syntax share
+  [(_ e) ≫
+   #:with ((σ _) (e- _)) (infer/branch #'{e (#%app)}
+                                       #:err
+                                       (lambda (v _)
+                                         (raise-syntax-error #f
+                                                             "cannot use linear variable declared outside of expression"
+                                                             this-syntax v)))
+   #:with τ (linear->unrestricted #'σ)
+   #:fail-unless (syntax-e #'τ)
+   (format "cannot share value of type ~a" (type->str #'σ))
+   --------
+   [⊢ e- ⇒ τ]])
