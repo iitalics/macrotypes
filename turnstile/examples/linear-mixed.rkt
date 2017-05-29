@@ -28,9 +28,10 @@
 
   ;; symmetric difference implementation, because current impl for
   ;; id-tables is bugged
-  (define (sym-dif s1 s2)
-    (for/fold ([s s1])
-              ([x (in-set s2)])
+  (define (sym-dif s0 . ss)
+    (for*/fold ([s s0])
+               ([s1 (in-list ss)]
+                [x (in-set s1)])
       (if (free-id-set-member? s x)
           (free-id-set-remove s x)
           (free-id-set-add s x))))
@@ -50,7 +51,6 @@
     (make-parameter #f))
 
 
-
   ; is the given type unrestricted?
   (define unrestricted?
     (syntax-parser
@@ -61,8 +61,8 @@
 
 
   ; set of current unused linear variables in context
-  (define current-linear-context
-    (make-parameter (immutable-free-id-set)))
+  (define unused-lin-vars
+    (immutable-free-id-set))
 
 
   ; like make-variable-like-transformer, but for linear variables
@@ -72,8 +72,8 @@
       [:id
        (cond
          [(unrestricted? ty) (put-props x tag ty)]
-         [(set-member? [current-linear-context] x)
-          [current-linear-context (set-remove [current-linear-context] x)]
+         [(set-member? unused-lin-vars x)
+          (set! unused-lin-vars (set-remove unused-lin-vars x))
           (put-props x tag ty)]
          [else
           (raise-syntax-error #f "linear variable used more than once" this-syntax)])]
@@ -88,9 +88,7 @@
   ; given the form ([x : ty] ...). returns list (xs- ts es-) where xs- are the
   ; expanded versions of the variables, ts are the resulting type of the expressions,
   ; and es- are the expanded forms of the expressions.
-  (define (infer/linear es
-                        [ctx-new '()]
-                        #:ctx [ctx [current-linear-context]])
+  (define (infer/lin-vars es ctx-new)
     (syntax-parse ctx-new
       [([x:id tag ty] ...)
        #:with (e ...) es
@@ -113,6 +111,23 @@
                 #'(τ ...)
                 #'(e- ...))])]))
 
+
+  ; infer the type of every expression in es, but expect the linear variable
+  ; usage in each expression to be the same.
+  (define (infer/branch es)
+    (define ulv unused-lin-vars)
+    (match (map (lambda (e)
+                  (set! unused-lin-vars ulv)
+                  (syntax-parse (infer/lin-vars (list e) '())
+                    [(_ (σ) (e-))
+                     (list #'σ #'e- unused-lin-vars)]))
+                (syntax->list es))
+      [(list (list ts es ulvs) ...)
+       (for ([u (in-set (apply sym-dif ulvs))])
+         (raise-syntax-error #f "linear variable may be unused" u))
+       (set! unused-lin-vars (first ulvs))
+       (list ts es)]))
+
   )
 
 (define-syntax with-new-linear-vars
@@ -123,17 +138,16 @@
                             [t (in-syntax #'(σ ...))]
                             #:when (not (unrestricted? ((current-type-eval) t))))
                    x))])
-       (parameterize ([current-linear-context
-                       (set-union [current-linear-context] lxs)])
-         (let ([body- (local-expand #'body 'expression '())])
-           (for ([u (in-set (set-intersect [current-linear-context] lxs))])
-             (raise-syntax-error #f "linear variable unused" u))
-           body-)))]))
+       (set! unused-lin-vars (set-union unused-lin-vars lxs))
+       (let ([body- (local-expand #'body 'expression '())])
+         (for ([u (in-set (set-intersect unused-lin-vars lxs))])
+           (raise-syntax-error #f "linear variable unused" u))
+         body-))]))
 
 
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
-         begin let let*
+         begin let let* if
          box tup
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
@@ -190,7 +204,7 @@
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
-   #:with ((x- ...) (σ_out) (e-)) (infer/linear #'(e) #'([x : σ] ...))
+   #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{e} #'([x : σ] ...))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
 
@@ -201,7 +215,7 @@
    #:with (~or (~⊗ σ1 σ2)
                (~post (~fail (format "cannot destructure non-pair type ~a"
                                      (type->str #'σ)))))  #'σ
-   #:with ((x- y-) (σ_out) (e-)) (infer/linear #'((let* (rest ...) e)) #'([x : σ1] [y : σ2]))
+   #:with ((x- y-) (σ_out) (e-)) (infer/lin-vars #'{(let* (rest ...) e)} #'([x : σ1] [y : σ2]))
    #:with tmp (generate-temporary #'rhs)
    --------
    [⊢ (let*- ([tmp rhs-]
@@ -215,3 +229,13 @@
   [(_ () e) ≫
    --------
    [≻ e]])
+
+
+
+(define-typed-syntax if
+  [(_ e1 e2 e3) ≫
+   [⊢ e1 ≫ e1- ⇒ ~Bool]
+   #:with ((σ1 σ2) (e2- e3-)) (infer/branch #'{e2 e3})
+   [σ2 τ= σ1 #:for e2]
+   --------
+   [⊢ (if- e1- e2- e3-) ⇒ σ1]])
