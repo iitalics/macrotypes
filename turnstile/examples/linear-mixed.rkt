@@ -41,27 +41,6 @@
   (define linear-sublanguage?
     (make-parameter #f))
 
-  ;;;; In the "linear sublanguage", you can attach to an output type the
-  ;;;; property #%var, which contains a set of the variables (notation: V)
-  ;;;; used by the expression that produced that type. You can retrieve
-  ;;;; the set safely using (var-set #'σ) or put a new set using (+var-set #'σ V).
-  ;;;; Operations on these sets are prefixed with lin/, e.g. lin/seq and lin/introduce.
-  ;;;; A type with a set attached to it is usually notated σ+ as opposed to just σ.
-
-  ;; THOUGHTS
-  ;; I'm not sure if this is the best way to accomplish this. In the other linear language
-  ;; I had two outputs on each rule: (⇒ : τ) for types and (⇒ % A) for variable usage.
-  ;; The annoying thing about that is the problems arising when you want to declare/define
-  ;; things and you have to attach something as a % property, or else try to deal with the #f
-  ;; property that you risk passing into (current-type-eval). However if you look at this code,
-  ;; the version with (⇒ % A) is MUCH more clear and simple than this version. Perhaps I can figure
-  ;; a way to tame the #f properties and revert back to that.
-  ;; However I'm very convinced that doing either way is a much better strategy than trying to
-  ;; split / modify / observe contexts since this way you have much more control than you would
-  ;; otherwise. Of course basically every other example of linear typing uses context splitting
-  ;; and/or the algorithmic input/output context approach, so this method is technically not proven
-  ;; to be sound etc.
-
 
 
   ; is the given type unrestricted?
@@ -72,115 +51,82 @@
       [(~× τ ...)  (andmap unrestricted? (syntax-e #'(τ ...)))]
       [_ #f]))
 
-  ; convert an unrestricted type to a linear type (shallow, only affects type
-  ; constructor)
-  (define (->linear ty)
-    (syntax-parse ty
-      [(~-> τ ...) ((current-type-eval) (syntax/loc ty (-o τ ...)))]
-      [(~× τ ...)  ((current-type-eval) (syntax/loc ty (⊗ τ ...)))]
-      [_ ty]))
 
-  ; attempt to convert a linear type into an unrestricted type.
-  ; if (unrestricted? tyl) is #f, where tyl is the result of this function, then
-  ; the type could not be converted (e.g. if it contains the (Box _) type)
-  (define (->unrestricted ty)
-    (syntax-parse ty
-      [(~-o σ ...)
-       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
-       ((current-type-eval) (syntax/loc ty (-> τ ...)))]
-      [(~-> σ ...)
-       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
-       ((current-type-eval) (syntax/loc ty (-> τ ...)))]
-      [(~⊗ σ ...)
-       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
-       ((current-type-eval) (syntax/loc ty (× τ ...)))]
-      [(~× σ ...)
-       #:with (τ ...) (stx-map ->unrestricted #'(σ ...))
-       ((current-type-eval) (syntax/loc ty (× τ ...)))]
-      [_ ty]))
+  ; set of current unused linear variables in context
+  (define current-linear-context
+    (make-parameter (immutable-free-id-set)))
 
 
+  ; like make-variable-like-transformer, but for linear variables
+  (define (make-linear-var-transformer ty tag x)
+    (define ty- ((current-type-eval) ty))
+    (syntax-parser
+      [:id
+       (cond
+         [(unrestricted? ty) (put-props x tag ty)]
+         [(set-member? [current-linear-context] x)
+          [current-linear-context (set-remove [current-linear-context] x)]
+          (put-props x tag ty)]
+         [else
+          (raise-syntax-error #f "linear variable used more than once" this-syntax)])]
+
+      [(id . args)
+       #:with ap (datum->syntax this-syntax '#%app)
+       (syntax/loc this-syntax
+         (ap id . args))]))
 
 
-  ; returns a set containing no variables
-  (define (empty-var-set)
-    (immutable-free-id-set))
-
-  ; gets the variable set attached to a type (or empty if none attached)
-  (define (var-set ty)
-    (or (syntax-property ty '#%vars)
-        (empty-var-set)))
-
-  ; attach the variable set V to the type ty
-  (define (+var-set ty V)
-    (syntax-property ty '#%vars V))
-
-  ; attach a single variable to a type if the given type is linear,
-  ; otherwise attach nothing. use this + lin/introduce whenever introducing
-  ; new linear variables into a context, e.g.
-  ;   #:with σ/x (+linear-var #'σ #'x)
-  ;   [[x ≫ x- : σ/x] ⊢ e ≫ e- ⇒ σ_out]
-  ;   #:with σ+ (+var+set #'σ_out
-  ;                       (lin/introduce (list #'σ/x) #:in #'σ_out))
-  (define (+linear-var ty src)
-    (cond
-      [(unrestricted? ty)
-       (+var-set ty (empty-var-set))]
-      [else
-       (let ([id (put-props (generate-temporary src)
-                            'orig src)])
-         ; NOTE: id does NOT BECOME REAL SYNTAX
-         ;       it's just used to keep track of a linear variable's usage
-         ;       i'm essentially just using free-id-set's because racket has
-         ;       pretty weak hash-table operations (e.g. intersect, union)
-         ;       compared to sets
-         (+var-set ty (immutable-free-id-set (list id))))]))
-
-
-
-  ; combine a list of variable sets as if they result from seperately
-  ; evaluated expression that need to be sequenced. this means that any
-  ; variables used twice will cause an error.
-  (define (lin/seq Vs)
-    (for/fold ([acc (empty-var-set)])
-              ([V (in-list Vs)])
-      (for ([v (in-set (set-intersect V acc))])
-        (raise-syntax-error #f
-                            "linear variable used more than once"
-                            (syntax-property v 'orig)))
-      (set-union V acc)))
-
-  ; introduce all variables in Vs into the variable set V-body, meaning
-  ; that an error will occur if any variables in any of Vs are not used in V-body.
-  (define (lin/introduce Vs #:in V-body)
-    (let ([V-new (foldl set-union (empty-var-set) Vs)])
-      (for ([v (in-set (set-subtract V-new V-body))])
-        (raise-syntax-error #f
-                            "linear variable unused"
-                            (syntax-property v 'orig)))
-      (set-subtract V-body V-new)))
-
-  ; merge to variable sets that should be equivalent, e.g. in the results of
-  ; branching expressions.
-  (define (lin/join V1 V2)
-    (for ([v (in-set (sym-diff V1 V2))])
-      (raise-syntax-error #f
-                          "linear variable may be unused"
-                          (syntax-property v 'orig)))
-    V1)
-
-
+  ; infer the type of every expression in es. introduces new linear variables
+  ; given the form ([x : ty] ...). returns list (xs- ts es-) where xs- are the
+  ; expanded versions of the variables, ts are the resulting type of the expressions,
+  ; and es- are the expanded forms of the expressions.
+  (define (infer/linear es
+                        [ctx-new '()]
+                        #:ctx [ctx [current-linear-context]])
+    (syntax-parse ctx-new
+      [([x:id tag ty] ...)
+       #:with (e ...) es
+       (syntax-parse (local-expand #'(#%plain-lambda
+                                      (x ...)
+                                      (with-new-linear-vars (x ...)
+                                        (let-syntax ([x (make-linear-var-transformer #`ty `tag #`x)] ...)
+                                          (#%expression e) ...)))
+                                   'expression
+                                   null)
+         #:literals (#%plain-lambda let-values #%expression)
+         [(#%plain-lambda (x- ...)
+                          (let-values ()
+                            (let-values ()
+                              (#%expression e-) ...)))
+          #:with (τ ...) (stx-map (lambda (s) (or (syntax-property s ':)
+                                             (raise-syntax-error #f "no attached type" s)))
+                                  #'(e- ...))
+          (list #'(x- ...)
+                #'(τ ...)
+                #'(e- ...))])]))
 
   )
 
+; syntax: (with-new-linear-vars (x ...) body)
+; introduces x... as new linear variables in the context of 'body', and
+; checks to make sure all variables were used in the body. this macro is
+; used by infer/linear.
+(define-syntax with-new-linear-vars
+  (syntax-parser
+    [(_ (x- ...) body)
+     (let ([xs (immutable-free-id-set (syntax-e #'(x- ...)))])
+       (parameterize ([current-linear-context
+                       (set-union [current-linear-context] xs)])
+         (let ([body- (local-expand #'body 'expression '())])
+           (for ([x (in-set (set-intersect [current-linear-context] xs))])
+             (raise-syntax-error #f "linear variable unused" x))
+           body-)))]))
 
 
 (provide (type-out Unit Int Bool Str -> × -o ⊗ Box)
          #%datum
-         tup
-         let let*
-         lin
-         share
+         begin let
+         box
          #%module-begin
          (rename-out [top-interaction #%top-interaction]))
 
@@ -210,145 +156,25 @@
    [⊢ 'k ⇒ Str]])
 
 
-
-(define-typed-syntax tup
+(define-typed-syntax begin
   [(_ e ...) ≫
-   #:when [linear-sublanguage?]
-   #:when (> (stx-length #'(e ...)) 1)
    [⊢ e ≫ e- ⇒ σ] ...
-   #:with σ_tup #'(⊗ σ ...)
-   #:with σ_tup+ (let ([Vs (map var-set (syntax-e #'(σ ...)))])
-                   (+var-set #'σ_tup (lin/seq Vs)))
+   #:with σ_out (last (syntax-e #'(σ ...)))
    --------
-   [⊢ (#%app- list- e- ...) ⇒ σ_tup+]]
-
-  ;;; [unrestricted]
-  [(_ e ... ) ≫
-   #:when (not [linear-sublanguage?])
-   [⊢ e ≫ e- ⇒ τ] ...
-   --------
-   [⊢ (#%app- list- e- ...) ⇒ (× τ ...)]])
-
+   [⊢ (begin- e- ...) ⇒ σ_out]])
 
 
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
-   #:when [linear-sublanguage?]
    [⊢ rhs ≫ rhs- ⇒ σ] ...
-   #:with (σ/x ...) (stx-map +linear-var
-                             #'(σ ...) #'(x ...))
-   [[x ≫ x- : σ/x] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:with σ_out+ (let ([Vs-rhs (map var-set (syntax-e #'(σ ...)))]
-                       [Vs-vars (map var-set (syntax-e #'(σ/x ...)))]
-                       [V-out (var-set #'σ_out)])
-                   (+var-set #'σ_out
-                             (lin/seq (cons (lin/introduce Vs-vars #:in V-out)
-                                            Vs-rhs))))
+   #:with ((x- ...) (σ_out) (e-))
+   (infer/linear #'(e) #'([x : σ] ...))
    --------
-   [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out+]]
-
-  ;;; [unrestricted]
-  [(_ ([x:id rhs] ...) e) ≫
-   #:when (not [linear-sublanguage?])
-   [⊢ rhs ≫ rhs- ⇒ τ] ...
-   [[x ≫ x- : τ] ... ⊢ e ≫ e- ⇒ τ_out]
-   --------
-   [⊢ (let- ([x- rhs-] ...) e-) ⇒ τ_out]])
+   [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
 
 
-
-(define-typed-syntax let*
-  [(_ ([(x:id y:id) rhs]) e) ≫
-   #:when [linear-sublanguage?]
-   [⊢ rhs ≫ rhs- ⇒ σ]
-   #:with (~or (~⊗ σ1 σ2) (~post (~fail (format "cannot destructure non-pair type: ~a"
-                                                (type->str #'σ)))))
-          (->linear #'σ)
-   #:with σ/x (+linear-var #'σ1 #'x)
-   #:with σ/y (+linear-var #'σ2 #'y)
-
-   [[x ≫ x- : σ/x] [y ≫ y- : σ/y] ⊢ e ≫ e- ⇒ σ_out]
-   #:with σ_out+ (let ([V-rhs (var-set #'σ)]
-                       [V-x (var-set #'σ/x)]
-                       [V-y (var-set #'σ/y)]
-                       [V-out (var-set #'σ_out)])
-                   (+var-set #'σ_out
-                             (lin/seq
-                              (list V-rhs (lin/introduce (list V-x V-y)
-                                                         #:in V-out)))))
-   #:with tmp (generate-temporary #'rhs)
-   --------
-   [⊢ (let- ([tmp rhs-])
-            (let- ([x- (#%app- car tmp)]
-                   [y- (#%app- cadr tmp)])
-                  e-))
-      ⇒ σ_out+]]
-
-  ;;; [unrestricted]
-  [(_ ([(x:id y:id) rhs]) e) ≫
-   #:when (not [linear-sublanguage?])
-   [⊢ rhs ≫ rhs- ⇒ τ]
-   #:with (~or (~× τ1 τ2) (~post (~fail (format "cannot destructure non-pair type: ~a"
-                                                (type->str #'τ)))))
-   #'τ
-
-   [[x ≫ x- : τ1] [y ≫ y- : τ2] ⊢ e ≫ e- ⇒ τ_out]
-   #:with tmp (generate-temporary #'rhs)
-   --------
-   [⊢ (let- ([tmp rhs-])
-            (let- ([x- (#%app- car tmp)]
-                   [y- (#%app- cadr tmp)])
-                  e-))
-      ⇒ τ_out]]
-
-
-  [(_ () e) ≫
-   --------
-   [≻ e]]
-  [(_ ([x:id r] vs ...) e) ≫
-   --------
-   [≻ (let ([x r]) (let* (vs ...) e))]]
-  [(_ ([(x:id y:id) r] vs ...+) e) ≫
-   --------
-   [≻ (let* ([(x y) r]) (let* (vs ...) e))]])
-
-
-
-
-(define-typed-syntax lin
-  [(_ _) ≫
-   #:when [linear-sublanguage?]
-   --------
-   [#:error "cannot use 'lin' within linear language"]]
-
-  [(_ lin-expr) ≫
-   #:when (not [linear-sublanguage?])
-   #:with (e- σ)
-   (parameterize ([linear-sublanguage? #t])
-     (syntax-parse #'lin-expr
-       [(~and e [~⊢ e ≫ e- ⇒ σ])
-        #'(e- σ)]))
-
-   #:fail-unless (unrestricted? #'σ)
-   (format "linear type ~a cannot leave linear boundary"
-           (type->str #'σ))
-   --------
-   [⊢ e- ⇒ σ]])
-
-
-
-(define-typed-syntax share
+(define-typed-syntax box
   [(_ e) ≫
-   #:when [linear-sublanguage?]
    [⊢ e ≫ e- ⇒ σ]
-   #:with τ (->unrestricted #'σ)
-   #:fail-unless (unrestricted? #'τ)
-   (format "cannot share type ~a" (type->str #'τ))
-   #:with τ+ (+var-set #'τ (var-set #'σ))
    --------
-   [⊢ e- ⇒ τ+]]
-
-  [(_ _) ≫
-   #:when (not [linear-sublanguage?])
-   --------
-   [#:error "cannot use 'share' outside of linear language"]])
+   [⊢ (#%app- box- e-) ⇒ (Box σ)]])
