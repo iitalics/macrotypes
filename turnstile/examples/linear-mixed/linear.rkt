@@ -22,7 +22,9 @@
 
 (begin-for-syntax
   (require syntax/id-set)
-  (provide linear-type?)
+  (provide linear-type?
+           infer/lin-vars
+           infer/branch)
 
   ; put multiple syntax properties onto the given syntax object
   ; (put-props stx key1 val1 key2 val2 ...) -> stx-
@@ -97,7 +99,9 @@
 
 
   ; infer the type of every expression in es, but expect the linear variable
-  ; usage in each expression to be the same.
+  ; usage in each expression to be the same. returns list (ts es-) where ts are
+  ; the resulting type of the expressions, and es- are the expanded forms of the
+  ; expressions.
   (define (infer/branch es
                         #:err [err (lambda (u expr)
                                      (raise-syntax-error #f

@@ -4,15 +4,21 @@
 
 (require (prefix-in U: "unrestric.rkt")
          (prefix-in L: "linear.rkt")
+
          (only-in "unrestric.rkt"
                   Unit Int Bool Str -> × ~-> ~×
+                  ;
                   current-parse-fun
                   current-parse-tuple
                   ~fun
                   ~tuple)
+
          (only-in "linear.rkt"
                   Box -o ⊗ ~-o ~⊗
+                  ;
                   linear-type?
+                  infer/lin-vars
+                  infer/branch
                   ))
 
 (provide (rename-out [U:#%top-interaction #%top-interaction]
@@ -22,7 +28,27 @@
          #%module-begin
          let let* lambda
          tup box unbox
-         l)
+         l share)
+
+
+#|
+Syntax    Unrestr     Linear    New
+#%datum      ×
+begin        ×
+let          ×          ×
+let*         ×          ×
+if           ×          ×
+#%app        ×
+lambda       ×          ×
+tup          ×          ×
+box                     ×
+unbox                   ×
+l                                ×
+share                            ×
+
+|#
+
+
 
 (begin-for-syntax
 
@@ -43,24 +69,28 @@
      [(~⊗ σ ...) #'(σ ...)]
      [_ #f])]
 
+  ; convert linear type to unrestricted type, or return #f if
+  ; not possible
+  (define (linear->unrestricted ty)
+    (let/ec ec
+      ((current-type-eval)
+       (let l->u ([ty ty])
+         (syntax-parse ty
+
+           [(~⊗ σ ...)
+            #:with (τ ...) (stx-map l->u #'(σ ...))
+            (syntax/loc ty (× τ ...))]
+           [(~-o σ ...)
+            #:with (τ ...) (stx-map l->u #'(σ ...))
+            (syntax/loc ty (-> σ ...))]
+
+           [_ (if (linear-type? ty)
+                  (ec #f)
+                  ty)])))))
+
   )
 
-#|
-          Unrestr     Linear    Lin-only    New
-#%datum      ×
-begin        ×
-let          ×    !!    ×
-let*         ×    !!    ×
-if           ×    !!    ×
-#%app        ×
-lambda       ×    !!    ×
-tup          ×    !!    ×
-box                                ×
-unbox                              ×
-l                                            ×
-share                                        ×
 
-|#
 
 (define-typed-syntax let
   [(_ . args) ≫
@@ -158,3 +188,27 @@ share                                        ×
   [(_ _) ≫
    --------
    [#:error "redundant use of syntax; already in linear context"]])
+
+
+(define-typed-syntax share
+  [(_ e) ≫
+   #:when [linear-lang?]
+   #:with ((σ _) (e- _))
+   (infer/branch #'{e (U:#%app)}
+                 #:err
+                 (λ (u expr)
+                   (raise-syntax-error #f
+                                       "may not share linear variable"
+                                       u this-syntax)))
+
+   #:with τ (linear->unrestricted #'σ)
+   #:do [(unless (syntax-e #'τ)
+           (raise-syntax-error #f
+                               "cannot convert ~a to unrestricted type"
+                               (type->str #'σ)))]
+   --------
+   [⊢ e- ⇒ τ]]
+
+   [(_ _) ≫
+    --------
+    [#:error "cannot use linear-only syntax here"]])
