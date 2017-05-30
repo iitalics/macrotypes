@@ -24,7 +24,8 @@
   (require syntax/id-set)
   (provide linear-type?
            infer/lin-vars
-           infer/branch)
+           infer/branch
+           make-linear-var-transformer)
 
   ; put multiple syntax properties onto the given syntax object
   ; (put-props stx key1 val1 key2 val2 ...) -> stx-
@@ -210,6 +211,15 @@
   [(_ () e) ≫
    --------
    [≻ e]])
+
+; private macro for destructuring a list into variables
+(define-syntax delist
+  (syntax-parser
+    [(_ () l e) #'e]
+    [(_ (x0:id x ...) l e)
+     #:with tmp (generate-temporary)
+     #'(let*- ([tmp l] [x0 (#%app- car- tmp)]) (delist (x ...) (#%app- cdr- tmp) e))]))
+
 
 
 (define-typed-syntax if

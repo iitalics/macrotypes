@@ -21,7 +21,8 @@
                   infer/branch
                   ))
 
-(provide (rename-out [U:#%top-interaction #%top-interaction]
+(provide Unit Int Bool Str -> -o × ⊗
+         (rename-out [U:#%top-interaction #%top-interaction]
                      [U:#%datum #%datum]
                      [U:begin begin]
                      [U:#%app #%app])
