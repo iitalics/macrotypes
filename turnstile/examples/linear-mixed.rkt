@@ -56,12 +56,12 @@
       ((current-type-eval)
        (let l->u ([ty ty])
          (syntax-parse ty
-           [(~-o σ ...)
-            #:with (τ ...) (stx-map l->u #'(σ ...))
-            (syntax/loc ty (-> τ ...))]
            [(~⊗ σ ...)
             #:with (τ ...) (stx-map l->u #'(σ ...))
             (syntax/loc ty (× τ ...))]
+           [(~-o σ_in ... σ_out)
+            #:with τ_out (l->u #'σ_out)
+            (syntax/loc ty (-> σ_in ... τ_out))]
            [(~or ~Loc (~Box _)) (ec #f)]
            [_ ty])))))
 
@@ -126,7 +126,7 @@
                           (let-values ()
                             (let-values ()
                               (#%expression e-) ...)))
-          #:with (τ ...) (stx-map (lambda (s) (or (syntax-property s ':)
+          #:with (τ ...) (stx-map (lambda (s) (or (detach s ':)
                                              (raise-syntax-error #f "no attached type" s)))
                                   #'(e- ...))
           (list #'(x- ...)
@@ -181,7 +181,7 @@
          #%datum
          begin let let* if #%app lambda
          share
-         box tup
+         tup box unbox
          #%module-begin
          (rename-out [top-interaction #%top-interaction]
                      [lambda λ]))
@@ -218,19 +218,38 @@
    [⊢ 'k ⇒ Str]])
 
 
-(define-typed-syntax box
-  [(_ e) ≫
-   [⊢ e ≫ e- ⇒ σ]
-   --------
-   [⊢ (#%app- box- e-) ⇒ (Box σ)]])
-
-
 (define-typed-syntax tup
   [(_ e1 e2) ≫
    [⊢ e1 ≫ e1- ⇒ σ1]
    [⊢ e2 ≫ e2- ⇒ σ2]
    --------
    [⊢ (#%app- list- e1- e2-) ⇒ (⊗ σ1 σ2)]])
+
+
+(define-typed-syntax box
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ σ]
+   --------
+   [⊢ (#%app- box- e-) ⇒ (Box σ)]]
+
+  [(_ l e) ≫
+   [⊢ l ≫ l- ⇐ Loc]
+   [⊢ e ≫ e- ⇒ σ]
+   #:with tmp (generate-temporary)
+   --------
+   [⊢ (let- ([tmp l-])
+        (#%app- set-box!- tmp e-) tmp)
+      ⇒ (Box σ)]])
+
+
+(define-typed-syntax unbox
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ (~Box σ)]
+   #:with tmp (generate-temporary)
+   --------
+   [⊢ (let- ([tmp e-])
+            (#%app- list- tmp (#%app- unbox- tmp)))
+      ⇒ (⊗ Loc σ)]])
 
 
 (define-typed-syntax begin
@@ -241,7 +260,7 @@
    [⊢ (begin- e- ...) ⇒ σ_out]])
 
 
- (define-typed-syntax let
+(define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
    #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{e} #'([x : σ] ...))
@@ -250,22 +269,20 @@
 
 
 (define-typed-syntax let*
-  [(_ ([(x:id y:id) rhs] rest ...) e) ≫
-   [⊢ rhs ≫ rhs- ⇒ σ]
-   #:with (~or (~pair σ1 σ2)
-               (~post (~fail (format "cannot destructure non-pair type ~a"
-                                     (type->str #'σ)))))  #'σ
-   #:with ((x- y-) (σ_out) (e-)) (infer/lin-vars #'{(let* (rest ...) e)} #'([x : σ1] [y : σ2]))
-   #:with tmp (generate-temporary #'rhs)
+
+  [(_ ([(x:id y:id) rhs] . vars) e) ≫
+   [⊢ rhs ≫ rhs- ⇒ (~⊗ σ1 σ2)]
+   #:with ((x- y-) (σ_out) (e-)) (infer/lin-vars #'{(let* vars e)} #'([x : σ1] [y : σ2]))
+   #:with tmp (generate-temporary)
    --------
    [⊢ (let*- ([tmp rhs-]
-              [x- (#%app- car tmp)]
-              [y- (#%app- cadr tmp)]) e-)
+              [x- (#%app- car- tmp)]
+              [y- (#%app- cadr- tmp)]) e-)
       ⇒ σ_out]]
 
-  [(_ ([x:id rhs] rest ...) e) ≫
+  [(_ ([x:id rhs] . vars) e) ≫
    --------
-   [≻ (let ([x rhs]) (let* (rest ...) e))]]
+   [≻ (let ([x rhs]) (let* vars e))]]
   [(_ () e) ≫
    --------
    [≻ e]])
@@ -273,7 +290,7 @@
 
 (define-typed-syntax if
   [(_ e1 e2 e3) ≫
-   [⊢ e1 ≫ e1- ⇒ ~Bool]
+   [⊢ e1 ≫ e1- ⇐ Bool]
    #:with ((σ1 σ2) (e2- e3-)) (infer/branch #'{e2 e3})
    [σ2 τ= σ1 #:for e2]
    --------
@@ -294,7 +311,7 @@
            (stx-length #'(arg ...)))
 
    [⊢ arg ≫ arg- ⇒ σ_arg] ...
-   [σ_arg τ= σ_in #:for arg] ...
+   [σ_in τ= σ_arg #:for arg] ...
    --------
    [⊢ (#%app- fun- arg- ...) ⇒ σ_out]])
 
@@ -312,7 +329,7 @@
    #:with ((σ _) (e- _)) (infer/branch #'{e (#%app)}
                                        #:err
                                        (lambda (v _)
-                                         (raise-syntax-error #f
+                                         (raise-syntax-error 'share
                                                              "cannot use linear variable declared outside of expression"
                                                              this-syntax v)))
    #:with τ (linear->unrestricted #'σ)
