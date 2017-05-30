@@ -58,6 +58,7 @@
     (syntax-parser
       [:id
        (cond
+         ;; TODO: error if in an unrestricted context
          [(not (linear-type? ty)) (put-props x tag ty)]
          [(set-member? unused-lin-vars x)
           (set! unused-lin-vars (set-remove unused-lin-vars x))
