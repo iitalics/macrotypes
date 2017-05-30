@@ -26,4 +26,4 @@
 (l (share (tup 1 2)))
 
 (l (let ([f (share (lambda ([x : Int]) x))])
-     (tup (f 3) (f 4))))
+     (share (tup (f 3) (f 4)))))
