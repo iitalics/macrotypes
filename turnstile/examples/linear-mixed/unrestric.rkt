@@ -116,7 +116,7 @@
                                                     (type->str #'τ_tup))))))]
 
    #:fail-unless (stx-length=? #'(τ ...) #'(x ...)) "wrong number of elements in tuple"
-   [[x ≫ x- : τ] ... ⊢ e ≫ e- ⇒ τ_out]
+   [[x ≫ x- : τ] ... ⊢ (let* vars e) ≫ e- ⇒ τ_out]
 
    #:with tmp (generate-temporary #'rhs)
    --------

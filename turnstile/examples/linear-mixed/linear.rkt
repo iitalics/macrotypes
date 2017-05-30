@@ -201,7 +201,7 @@
                                                     (type->str #'σ_tup))))))]
 
    #:fail-unless (stx-length=? #'(σ ...) #'(x ...)) "wrong number of elements in tuple"
-   #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{e} #'([x : σ] ...))
+   #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{(let vars e)} #'([x : σ] ...))
    #:with tmp (generate-temporary #'rhs)
    --------
    [⊢ (delist (x- ...) rhs- e-) ⇒ σ_out]]
