@@ -27,9 +27,9 @@
                      [U:begin begin]
                      [U:#%app #%app])
          #%module-begin
-         let let* lambda
-         tup box unbox
-         l share)
+         let let* if lambda tup
+         box unbox share
+         l)
 
 
 #|
@@ -44,8 +44,8 @@ lambda       ×          ×
 tup          ×          ×
 box                     ×
 unbox                   ×
+share                   ×        ×
 l                                ×
-share                            ×
 
 |#
 
@@ -92,96 +92,52 @@ share                            ×
   )
 
 
-
-(define-typed-syntax let
-  [(_ . args) ≫
-   #:when [linear-lang?]
-   --------
-   [≻ (L:let . args)]]
-
-  [(_ . args) ≫
-   #:when (not [linear-lang?])
-   --------
-   [≻ (U:let . args)]])
-
-
-(define-typed-syntax let*
-  [(_ . args) ≫
-   #:when [linear-lang?]
-   --------
-   [≻ (L:let* . args)]]
-
-  [(_ . args) ≫
-   --------
-   [≻ (U:let* . args)]])
-
-
-(define-typed-syntax if
-  [(_ . args) ≫
-   #:when [linear-lang?]
-   --------
-   [≻ (L:if . args)]]
-
-  [(_ . args) ≫
-   --------
-   [≻ (U:if . args)]])
+(define-syntax redefine-syntax
+  (syntax-parser
+    [(_ x:id (~and kw
+                   (~or #:linear
+                        #:unrestric
+                        #:both)))
+     #:with tmp (generate-temporary)
+     #:with x/L (format-id #'x "L:~a" #'x)
+     #:with x/U (format-id #'x "L:~a" #'x)
+     #`(define-typed-syntax x
+         [(_ . tmp) ≫
+          #:when [linear-lang?]
+          --------
+          #,(case (syntax-e #'kw)
+              [(#:unrestric) #'[#:error "cannot use unrestricted syntax in linear context"]]
+              [else #'[≻ (x/L . tmp)]])]
+         [(_ . tmp) ≫
+          #:when (not [linear-lang?])
+          --------
+          #,(case (syntax-e #'kw)
+              [(#:linear) #'[#:error "cannot use linear syntax in unrestricted context"]]
+              [else #'[≻ (x/U . tmp)]])])]))
 
 
-(define-typed-syntax lambda
-  [(_ . args) ≫
-   #:when [linear-lang?]
-   --------
-   [≻ (L:lambda . args)]]
-
-  [(_ . args) ≫
-   --------
-   [≻ (U:lambda . args)]])
-
-
-(define-typed-syntax tup
-  [(_ . args) ≫
-   #:when [linear-lang?]
-   --------
-   [≻ (L:tup . args)]]
-
-  [(_ . args) ≫
-   --------
-   [≻ (U:tup . args)]])
-
-
-(define-typed-syntax box
-  [(_ . args) ≫
-   #:when [linear-lang?]
-   --------
-   [≻ (L:box . args)]]
-
-  [(_ . args) ≫
-   --------
-   [#:error "cannot use linear-only syntax here"]])
-
-
-(define-typed-syntax unbox
-  [(_ . args) ≫
-   #:when [linear-lang?]
-   --------
-   [≻ (L:unbox . args)]]
-
-  [(_ . args) ≫
-   --------
-   [#:error "cannot use linear-only syntax here"]])
+(redefine-syntax let   #:both)
+(redefine-syntax let*  #:both)
+(redefine-syntax if    #:both)
+(redefine-syntax lambda #:both)
+(redefine-syntax tup   #:both)
+(redefine-syntax box   #:linear)
+(redefine-syntax unbox #:linear)
+(redefine-syntax share #:linear)
 
 
 (define-typed-syntax l
   [(_ e) ≫
    #:when (not [linear-lang?])
-   #:with (_ _ (e-) (τ))
+   #:with (_ _ (e-) (σ))
    (parameterize ([linear-lang? #t])
      (infer (list #'e)))
 
-   #:do [(when (linear-type? #'τ)
+   #:with τ (linear->unrestricted #'σ)
+   #:do [(unless (syntax-e #'τ)
            (raise-syntax-error #f
                                (format "linear type ~a cannot escape linear context"
-                                       (type->str #'τ))
+                                       (type->str #'σ))
                                #'e))]
    --------
    [⊢ e- ⇒ τ]]
@@ -189,27 +145,3 @@ share                            ×
   [(_ _) ≫
    --------
    [#:error "redundant use of syntax; already in linear context"]])
-
-
-(define-typed-syntax share
-  [(_ e) ≫
-   #:when [linear-lang?]
-   #:with ((σ _) (e- _))
-   (infer/branch #'{e (U:#%app)}
-                 #:err
-                 (λ (u expr)
-                   (raise-syntax-error #f
-                                       "may not share linear variable"
-                                       u this-syntax)))
-
-   #:with τ (linear->unrestricted #'σ)
-   #:do [(unless (syntax-e #'τ)
-           (raise-syntax-error #f
-                               "cannot convert ~a to unrestricted type"
-                               (type->str #'σ)))]
-   --------
-   [⊢ e- ⇒ τ]]
-
-   [(_ _) ≫
-    --------
-    [#:error "cannot use linear-only syntax here"]])

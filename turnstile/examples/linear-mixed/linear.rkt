@@ -2,19 +2,21 @@
 ;; this contains the linear-only forms, common forms such as begin and #%app
 ;; should be reused from "unrestric.rkt"
 
+(define-type-constructor !! #:arity = 1)
 (define-type-constructor -o #:arity >= 1)
 (define-type-constructor ⊗ #:arity > 1)
 (define-type-constructor Box #:arity = 1)
 (define-base-type Loc)
 
-(require (only-in "unrestric.rkt"
+(require (prefix-in U: "unrestric.rkt")
+         (only-in "unrestric.rkt"
                   current-parse-fun
                   current-parse-tuple
                   ~fun
                   ~tuple))
 
-(provide (type-out -o ⊗ Box)
-         tup box unbox
+(provide (type-out -o ⊗ Box !!)
+         tup box unbox share
          let let* if lambda
          (rename-out [lambda λ]))
 
@@ -23,6 +25,8 @@
 (begin-for-syntax
   (require syntax/id-set)
   (provide linear-type?
+           linear-parse-fun
+           linear-parse-tuple
            infer/lin-vars
            infer/branch
            make-linear-var-transformer)
@@ -47,9 +51,29 @@
       [_ #f]))
 
 
+  (define linear-parse-fun
+    (syntax-parser
+      [(~-o σ ...) (syntax/loc this-syntax (σ ...))]
+      [(~!! σ) (linear-parse-fun #'σ)]
+      [_ #f]))
+
+  (define linear-parse-tuple
+    (syntax-parser
+      [(~⊗ σ ...) (syntax/loc this-syntax (σ ...))]
+      [(~!! σ) (linear-parse-tuple #'σ)]
+      [_ #f]))
+
+
+
+
   ; set of current unused linear variables in context
   (define unused-lin-vars
     (immutable-free-id-set))
+
+
+  ; procedure that gets called around linear variable usage
+  (define current-with-linear-var
+    (make-parameter values))
 
 
   ; like make-variable-like-transformer, but for linear variables
@@ -58,7 +82,6 @@
     (syntax-parser
       [:id
        (cond
-         ;; TODO: error if in an unrestricted context
          [(not (linear-type? ty)) (put-props x tag ty)]
          [(set-member? unused-lin-vars x)
           (set! unused-lin-vars (set-remove unused-lin-vars x))
@@ -225,7 +248,7 @@
 
 (define-typed-syntax if
   [(_ e1 e2 e3) ≫
-   [⊢ e1 ≫ e1- ⇐ Bool]
+   [⊢ e1 ≫ e1- ⇐ U:Bool]
    #:with ((σ1 σ2) (e2- e3-)) (infer/branch #'{e2 e3})
    [σ2 τ= σ1 #:for e2]
    --------
@@ -238,3 +261,20 @@
                                                      #'([x : ty] ...))
    --------
    [⊢ (λ- (x- ...) body-) ⇒ (-o ty.norm ... σ_out)]])
+
+
+(define-typed-syntax share
+  [(_ e) ≫
+   #:with ((σ _) (e- _))
+   (infer/branch #'{e (U:#%app)}
+                 #:err
+                 (λ (u expr)
+                   (raise-syntax-error #f
+                                       "may not share linear variable"
+                                       u this-syntax)))
+   --------
+   [⊢ e- ⇒ (!! σ)]]
+
+   [(_ _) ≫
+    --------
+    [#:error "cannot use linear-only syntax here"]])
