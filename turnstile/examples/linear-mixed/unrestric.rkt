@@ -15,11 +15,12 @@
          (rename-out [top-interaction #%top-interaction]
                      [lambda λ]))
 
+(require racket/unsafe/ops)
+
 
 
 
 (begin-for-syntax
-
   (provide unrestric-parse-fun
            unrestric-parse-tuple
            current-parse-fun
@@ -127,7 +128,7 @@
 
    #:with tmp (generate-temporary #'rhs)
    --------
-   [⊢ (delist (x- ...) rhs- e-) ⇒ τ_out]]
+   [⊢ (-delist (x- ...) rhs- e-) ⇒ τ_out]]
 
   [(_ ([x:id rhs] . vars) e) ≫
    --------
@@ -135,15 +136,6 @@
   [(_ () e) ≫
    --------
    [≻ e]])
-
-; private macro for destructuring a list into variables
-(define-syntax delist
-  (syntax-parser
-    [(_ () l e) #'e]
-    [(_ (x0:id x ...) l e)
-     #:with tmp (generate-temporary)
-     #'(let*- ([tmp l] [x0 (#%app- car- tmp)]) (delist (x ...) (#%app- cdr- tmp) e))]))
-
 
 
 (define-typed-syntax if
@@ -184,3 +176,15 @@
    [[x ≫ x- : τ_in] ... ⊢ body ≫ body- ⇒ τ_out]
    --------
    [⊢ (λ- (x- ...) body-) ⇒ (-> τ_in ... τ_out)]])
+
+
+
+
+; private macro for destructuring a list into variables
+(define-syntax -delist
+  (syntax-parser
+    [(_ () l e) #'e]
+    [(_ (x0:id x ...) l e)
+     #:with tmp (generate-temporary)
+     #'(let*- ([tmp l] [x0 (#%app- unsafe-car tmp)])
+              (-delist (x ...) (#%app- unsafe-cdr tmp) e))]))

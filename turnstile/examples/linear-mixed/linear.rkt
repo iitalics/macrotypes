@@ -14,7 +14,8 @@
                   current-parse-fun
                   current-parse-tuple
                   ~fun
-                  ~tuple))
+                  ~tuple)
+         racket/unsafe/ops)
 
 (provide (type-out -o ⊗ Box Loc !!)
          tup box unbox share
@@ -208,7 +209,7 @@
    #:with tmp (generate-temporary)
    --------
    [⊢ (let- ([tmp l-])
-        (#%app- set-box!- tmp e-) tmp)
+        (#%app- unsafe-set-box! tmp e-) tmp)
       ⇒ (Box σ)]])
 
 
@@ -218,7 +219,7 @@
    #:with tmp (generate-temporary)
    --------
    [⊢ (let- ([tmp e-])
-            (#%app- list- tmp (#%app- unbox- tmp)))
+            (#%app- list- tmp (#%app- unsafe-unbox tmp)))
       ⇒ (⊗ Loc σ)]])
 
 
@@ -296,10 +297,16 @@
 ; syntax: (-copy <expr> <type>)
 (define-syntax -copy
   (syntax-parser
-    [(_ e (~Box σ))
-     #'(#%app- box- (-copy (#%app- unbox- e) σ))]
-
     [(_ e (~!! σ)) #'(-copy e σ)]
+
+    [(_ e (~Box σ))
+     #'(#%app- box- (-copy (#%app- unsafe-unbox e) σ))]
+
+    [(_ e (~⊗ σ ...))
+     #:with (tmp ...) (generate-temporaries #'(σ ...))
+     #'(-delist (tmp ...) e
+                (#%app- list- (-copy tmp σ) ...))]
+
     [(_ e σ) #'e]))
 
 
@@ -310,4 +317,5 @@
     [(_ () l e) #'e]
     [(_ (x0:id x ...) l e)
      #:with tmp (generate-temporary)
-     #'(let*- ([tmp l] [x0 (#%app- car- tmp)]) (-delist (x ...) (#%app- cdr- tmp) e))]))
+     #'(let*- ([tmp l] [x0 (#%app- unsafe-car tmp)])
+              (-delist (x ...) (#%app- unsafe-cdr tmp) e))]))
