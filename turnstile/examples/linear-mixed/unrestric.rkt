@@ -20,25 +20,32 @@
 
 (begin-for-syntax
 
-  (provide current-parse-fun
+  (provide unrestric-parse-fun
+           unrestric-parse-tuple
+           current-parse-fun
            current-parse-tuple
            ~fun
            ~tuple)
 
 
-  ;; TODO: move these parameters to a seperate common module
+  (define unrestric-parse-fun
+    (syntax-parser
+      [(~-> τ ...) #'(τ ...)]
+      [_ #f]))
+
+  (define unrestric-parse-tuple
+    (syntax-parser
+      [(~× τ ...) #'(τ ...)]
+      [_ #f]))
+
+
 
   (define current-parse-fun
-    (make-parameter
-     (syntax-parser
-       [(~-> τ ...) #'(τ ...)]
-       [_ #f])))
+    (make-parameter unrestric-parse-fun))
 
   (define current-parse-tuple
-    (make-parameter
-     (syntax-parser
-       [(~× τ ...) #'(τ ...)]
-       [_ #f])))
+    (make-parameter unrestric-parse-tuple))
+
 
   (define-syntax ~fun
     (pattern-expander

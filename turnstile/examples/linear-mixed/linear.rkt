@@ -15,7 +15,7 @@
                   ~fun
                   ~tuple))
 
-(provide (type-out -o ⊗ Box !!)
+(provide (type-out -o ⊗ Box Loc !!)
          tup box unbox share
          let let* if lambda
          (rename-out [lambda λ]))
@@ -273,8 +273,4 @@
                                        "may not share linear variable"
                                        u this-syntax)))
    --------
-   [⊢ e- ⇒ (!! σ)]]
-
-   [(_ _) ≫
-    --------
-    [#:error "cannot use linear-only syntax here"]])
+   [⊢ e- ⇒ (!! σ)]])

@@ -8,20 +8,24 @@
          (only-in "unrestric.rkt"
                   Unit Int Bool Str -> × ~-> ~×
                   ;
+                  unrestric-parse-fun
+                  unrestric-parse-tuple
                   current-parse-fun
                   current-parse-tuple
                   ~fun
                   ~tuple)
 
          (only-in "linear.rkt"
-                  Box -o ⊗ ~-o ~⊗ !! ~!!
+                  -o ⊗ ~-o ~⊗ Box Loc !! ~!!
                   ;
+                  linear-parse-fun
+                  linear-parse-tuple
                   linear-type?
                   infer/lin-vars
                   infer/branch
                   ))
 
-(provide Unit Int Bool Str -> -o × ⊗
+(provide Unit Int Bool Str -> × -o ⊗ Box Loc !!
          (rename-out [U:#%top-interaction #%top-interaction]
                      [U:#%datum #%datum]
                      [U:begin begin]
@@ -57,19 +61,13 @@ l                                ×
   (define linear-lang?
     (make-parameter #f))
 
-  ; accept either function type
+  ; parse types from either language
   [current-parse-fun
-   (syntax-parser
-     [(~-> σ ...) #'(σ ...)]
-     [(~-o σ ...) #'(σ ...)]
-     [_ #f])]
-
-  ; accept either tuple type
+   (λ (ty) (or (unrestric-parse-fun ty)
+               (linear-parse-fun ty)))]
   [current-parse-tuple
-   (syntax-parser
-     [(~× σ ...) #'(σ ...)]
-     [(~⊗ σ ...) #'(σ ...)]
-     [_ #f])]
+   (λ (ty) (or (unrestric-parse-tuple ty)
+               (linear-parse-tuple ty)))]
 
   ; convert linear type to unrestricted type, or return #f if
   ; not possible
@@ -86,8 +84,8 @@ l                                ×
             #:with (τ ...) (stx-map l->u #'(σ ...))
             (syntax/loc ty (-> σ ...))]
            [(~!! σ)
-            #:with τ (stx-map l->u #'σ)
-            (syntax/loc ty σ)]
+            #:with τ (l->u #'σ)
+            (syntax/loc ty τ)]
 
            [_ (if (linear-type? ty)
                   (ec #f)
