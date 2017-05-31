@@ -60,8 +60,8 @@
             : (× Int Unit))
 
 (check-type (UL/test (let ([x (share (tup 2 ()))])
-                       x))
-            : (!! (⊗ Int Unit)))
+                       (tup x x)))
+            : (⊗ (⊗ Int Unit) (⊗ Int Unit)))
 
 (check-type (UL (let ([x (share (tup 4 #f))])
                   (tup x x)))

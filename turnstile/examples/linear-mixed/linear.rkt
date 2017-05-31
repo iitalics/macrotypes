@@ -42,9 +42,9 @@
        #'expr]))
 
 
-  ; can values of the given only be bound once?
-  ; e.g. all linear types except shared types (!! x)
-  (define type-once?
+  ; is the type a type whose values can only be bound once?
+  ; e.g. all linear types except lump type (!! x)
+  (define linear-type?
     (syntax-parser
       [(~-o _ ...) #t]
       [(~⊗ _ ...) #t]
@@ -57,15 +57,17 @@
   (define linear-parse-fun
     (syntax-parser
       [(~-o σ ...) (syntax/loc this-syntax (σ ...))]
-      [(~!! σ) (linear-parse-fun #'σ)]
       [_ #f]))
 
   (define linear-parse-tuple
     (syntax-parser
       [(~⊗ σ ...) (syntax/loc this-syntax (σ ...))]
-      [(~!! σ) (linear-parse-tuple #'σ)]
       [_ #f]))
 
+  (define unlump
+    (syntax-parser
+      [(~!! σ) (unlump #'σ)]
+      [σ0 #'σ0]))
 
 
 
@@ -85,12 +87,14 @@
     (syntax-parser
       [:id
        (cond
-         [(not (type-once? ty)) (put-props x tag ty)]
-         [(set-member? unused-lin-vars x)
+         [(linear-type? ty)
+          (unless (set-member? unused-lin-vars x)
+            (raise-syntax-error #f "linear variable used more than once" this-syntax))
           (set! unused-lin-vars (set-remove unused-lin-vars x))
           (put-props x tag ty)]
+
          [else
-          (raise-syntax-error #f "linear variable used more than once" this-syntax)])]
+          (put-props x tag (unlump ty))])]
 
       [(id . args)
        #:with ap (datum->syntax this-syntax '#%app)
@@ -166,7 +170,7 @@
      (let ([lxs (immutable-free-id-set
                  (for/list ([x (in-syntax #'(x ...))]
                             [t (in-syntax #'(σ ...))]
-                            #:when (type-once? ((current-type-eval) t)))
+                            #:when (linear-type? ((current-type-eval) t)))
                    x))])
        (set! unused-lin-vars (set-union unused-lin-vars lxs))
        (let ([body- (local-expand #'body 'expression '())])
