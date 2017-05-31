@@ -14,7 +14,7 @@
                   ~tuple)
 
          (only-in "linear.rkt"
-                  Box -o ⊗ ~-o ~⊗
+                  Box -o ⊗ ~-o ~⊗ !! ~!!
                   ;
                   linear-type?
                   infer/lin-vars
@@ -25,9 +25,10 @@
          (rename-out [U:#%top-interaction #%top-interaction]
                      [U:#%datum #%datum]
                      [U:begin begin]
-                     [U:#%app #%app])
+                     [U:#%app #%app]
+                     [L:if if])
          #%module-begin
-         let let* if lambda tup
+         let let* lambda tup
          box unbox share
          l)
 
@@ -84,6 +85,9 @@ l                                ×
            [(~-o σ ...)
             #:with (τ ...) (stx-map l->u #'(σ ...))
             (syntax/loc ty (-> σ ...))]
+           [(~!! σ)
+            #:with τ (stx-map l->u #'σ)
+            (syntax/loc ty σ)]
 
            [_ (if (linear-type? ty)
                   (ec #f)
@@ -100,7 +104,7 @@ l                                ×
                         #:both)))
      #:with tmp (generate-temporary)
      #:with x/L (format-id #'x "L:~a" #'x)
-     #:with x/U (format-id #'x "L:~a" #'x)
+     #:with x/U (format-id #'x "U:~a" #'x)
      #`(define-typed-syntax x
          [(_ . tmp) ≫
           #:when [linear-lang?]
@@ -118,7 +122,6 @@ l                                ×
 
 (redefine-syntax let   #:both)
 (redefine-syntax let*  #:both)
-(redefine-syntax if    #:both)
 (redefine-syntax lambda #:both)
 (redefine-syntax tup   #:both)
 (redefine-syntax box   #:linear)
@@ -138,7 +141,7 @@ l                                ×
            (raise-syntax-error #f
                                (format "linear type ~a cannot escape linear context"
                                        (type->str #'σ))
-                               #'e))]
+                               this-syntax))]
    --------
    [⊢ e- ⇒ τ]]
 
