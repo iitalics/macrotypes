@@ -93,8 +93,12 @@
           (set! unused-lin-vars (set-remove unused-lin-vars x))
           (put-props x tag ty)]
 
-         [else
-          (put-props x tag (unlump ty))])]
+         ; shared type needs to be copied
+         ; FIXME: make this explicit or not?
+         [(!!? ty)
+          (put-props #`(-copy #,x #,ty) tag (unlump ty))]
+
+         [else (put-props x tag ty)])]
 
       [(id . args)
        #:with ap (datum->syntax this-syntax '#%app)
@@ -241,7 +245,7 @@
 
    #:with tmp (generate-temporary #'rhs)
    --------
-   [⊢ (delist (x- ...) rhs- e-) ⇒ σ_out]]
+   [⊢ (-delist (x- ...) rhs- e-) ⇒ σ_out]]
 
   [(_ ([x:id rhs] . vars) e) ≫
    --------
@@ -249,14 +253,6 @@
   [(_ () e) ≫
    --------
    [≻ e]])
-
-; private macro for destructuring a list into variables
-(define-syntax delist
-  (syntax-parser
-    [(_ () l e) #'e]
-    [(_ (x0:id x ...) l e)
-     #:with tmp (generate-temporary)
-     #'(let*- ([tmp l] [x0 (#%app- car- tmp)]) (delist (x ...) (#%app- cdr- tmp) e))]))
 
 
 
@@ -293,3 +289,25 @@
                                        u this-syntax)))
    --------
    [⊢ e- ⇒ (!! σ)]])
+
+
+
+
+; syntax: (-copy <expr> <type>)
+(define-syntax -copy
+  (syntax-parser
+    [(_ e (~Box σ))
+     #'(#%app- box- (-copy (#%app- unbox- e) σ))]
+
+    [(_ e (~!! σ)) #'(-copy e σ)]
+    [(_ e σ) #'e]))
+
+
+; syntax: (-delist (x ...) <list-expr> <body-expr>)
+; private macro for destructuring a list into variables
+(define-syntax -delist
+  (syntax-parser
+    [(_ () l e) #'e]
+    [(_ (x0:id x ...) l e)
+     #:with tmp (generate-temporary)
+     #'(let*- ([tmp l] [x0 (#%app- car- tmp)]) (-delist (x ...) (#%app- cdr- tmp) e))]))

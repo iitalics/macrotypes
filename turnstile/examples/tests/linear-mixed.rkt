@@ -92,7 +92,6 @@
                       (share x)))
                 #:with-msg "x: may not share linear variable")
 
-#;
 (check-type (UL (let* ([b (share (box 3))]
                        [(l1 x1) (unbox b)]
                        [b2 (box l1 4)]
