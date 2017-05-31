@@ -29,6 +29,26 @@
                 #:with-msg "linear type .+ cannot escape linear context")
 
 
+;; tuple destructuring
+
+(check-type (let* ([p (tup 1 4)] [(x y) p]) x)
+            : Int -> 1)
+
+(check-type (UL (let* ([p (tup 1 2 3 4 5)]
+                       [(x y z t s) p])
+                  t))
+            : Int -> 4)
+
+(typecheck-fail (UL (let* ([p (tup 1 2 3 4 5)]
+                           [(x y z t) p])
+                      t))
+                #:with-msg "wrong number of elements in tuple")
+
+(typecheck-fail (let* ([p (tup 1 2 3 4 5)]
+                       [(x y z t) p])
+                  t)
+                #:with-msg "wrong number of elements in tuple")
+
 
 
 ;; linear mechanics

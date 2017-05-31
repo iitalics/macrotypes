@@ -184,11 +184,10 @@
 ; typed syntax
 
 (define-typed-syntax tup
-  [(_ e1 e2) ≫
-   [⊢ e1 ≫ e1- ⇒ σ1]
-   [⊢ e2 ≫ e2- ⇒ σ2]
+  [(_ e ...) ≫
+   [⊢ e ≫ e- ⇒ σ] ...
    --------
-   [⊢ (#%app- list- e1- e2-) ⇒ (⊗ σ1 σ2)]])
+   [⊢ (#%app- list- e- ...) ⇒ (⊗ σ ...)]])
 
 
 (define-typed-syntax box
