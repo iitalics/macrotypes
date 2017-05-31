@@ -31,10 +31,10 @@
                      [U:begin begin]
                      [U:#%app #%app]
                      [L:if if])
-         #%module-begin
+         #%module-begin require
          let let* lambda tup
          box unbox share
-         l)
+         UL)
 
 
 #|
@@ -49,8 +49,8 @@ lambda       ×          ×
 tup          ×          ×
 box                     ×
 unbox                   ×
-share                   ×        ×
-l                                ×
+share                   ×
+UL                               ×
 
 |#
 
@@ -58,8 +58,10 @@ l                                ×
 
 (begin-for-syntax
 
+  ; parameter controlling which context we're in
   (define linear-lang?
     (make-parameter #f))
+
 
   ; parse types from either language
   [current-parse-fun
@@ -68,6 +70,7 @@ l                                ×
   [current-parse-tuple
    (λ (ty) (or (unrestric-parse-tuple ty)
                (linear-parse-tuple ty)))]
+
 
   ; convert linear type to unrestricted type, or return #f if
   ; not possible
@@ -86,6 +89,10 @@ l                                ×
            [(~!! σ)
             #:with τ (l->u #'σ)
             (syntax/loc ty τ)]
+
+           ; boxes are not interopable because I haven't figured out
+           ; how to transparently integrate them in racket
+           ; this may also be a problem when lists come into the picture
 
            [_ (if (linear-type? ty)
                   (ec #f)
@@ -127,7 +134,7 @@ l                                ×
 (redefine-syntax share #:linear)
 
 
-(define-typed-syntax l
+(define-typed-syntax UL
   [(_ e) ≫
    #:when (not [linear-lang?])
    #:with (_ _ (e-) (σ))
@@ -146,3 +153,14 @@ l                                ×
   [(_ _) ≫
    --------
    [#:error "redundant use of syntax; already in linear context"]])
+
+
+; use this only for linear typechecking tests
+(provide UL/test)
+(define-typed-syntax UL/test
+  [(_ e) ≫
+   #:with (_ _ (e-) (σ))
+   (parameterize ([linear-lang? #t])
+     (infer (list #'e)))
+   --------
+   [⊢ e- ⇒ σ]])
