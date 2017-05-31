@@ -1,6 +1,7 @@
 #lang turnstile
-;; this contains the linear-only forms, common forms such as begin and #%app
-;; should be reused from "unrestric.rkt"
+;; this contains the linear-only forms, and is not usable as a
+;; stand-alone language. see "mixed.rkt" for a language which combines
+;; syntax from this language and the "unrestric.rkt" language.
 
 (define-type-constructor !! #:arity = 1)
 (define-type-constructor -o #:arity >= 1)
@@ -41,14 +42,16 @@
        #'expr]))
 
 
-  ;; is the given type linear?
-  (define linear-type?
+  ; can values of the given only be bound once?
+  ; e.g. all linear types except shared types (!! x)
+  (define type-once?
     (syntax-parser
       [(~-o _ ...) #t]
       [(~⊗ _ ...) #t]
       [(~Box _) #t]
       [~Loc #t]
       [_ #f]))
+
 
 
   (define linear-parse-fun
@@ -82,7 +85,7 @@
     (syntax-parser
       [:id
        (cond
-         [(not (linear-type? ty)) (put-props x tag ty)]
+         [(not (type-once? ty)) (put-props x tag ty)]
          [(set-member? unused-lin-vars x)
           (set! unused-lin-vars (set-remove unused-lin-vars x))
           (put-props x tag ty)]
@@ -102,6 +105,9 @@
   (define (infer/lin-vars es ctx-new)
     (syntax-parse ctx-new
       [([x:id tag ty] ...)
+       ; this is quite ugly, but it is doing exactly what is done
+       ; in turnstile's (infer ...) function in order to introduce
+       ; new variables into scope
        #:with (e ...) es
        (syntax-parse (local-expand #'(#%plain-lambda
                                       (x ...)
@@ -112,6 +118,8 @@
                                    null)
          #:literals (#%plain-lambda let-values #%expression)
          [(#%plain-lambda (x- ...)
+                          ; (let-syntax ...) adds a bunch of empty let-values's that
+                          ; we have to get rid of
                           (let-values ()
                             (let-values ()
                               (#%expression e-) ...)))
@@ -131,8 +139,7 @@
                         #:err [err (lambda (u expr)
                                      (raise-syntax-error #f
                                                          "linear variable may be unused"
-                                                         u
-                                                         expr))])
+                                                         u expr))])
     (define ulv unused-lin-vars)
     (match (map (lambda (e)
                   (set! unused-lin-vars ulv)
@@ -159,7 +166,7 @@
      (let ([lxs (immutable-free-id-set
                  (for/list ([x (in-syntax #'(x ...))]
                             [t (in-syntax #'(σ ...))]
-                            #:when (linear-type? ((current-type-eval) t)))
+                            #:when (type-once? ((current-type-eval) t)))
                    x))])
        (set! unused-lin-vars (set-union unused-lin-vars lxs))
        (let ([body- (local-expand #'body 'expression '())])
@@ -211,6 +218,7 @@
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
+   ; [[x ≫ x- : σ] ⊢ e ≫ e- ⇒ σ_out]
    #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{e} #'([x : σ] ...))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
@@ -224,7 +232,10 @@
                                                     (type->str #'σ_tup))))))]
 
    #:fail-unless (stx-length=? #'(σ ...) #'(x ...)) "wrong number of elements in tuple"
+
+   ; [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
    #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{(let vars e)} #'([x : σ] ...))
+
    #:with tmp (generate-temporary #'rhs)
    --------
    [⊢ (delist (x- ...) rhs- e-) ⇒ σ_out]]
@@ -249,6 +260,7 @@
 (define-typed-syntax if
   [(_ e1 e2 e3) ≫
    [⊢ e1 ≫ e1- ⇐ U:Bool]
+   ; [⊢ e2 ≫ e2- ⇒ σ1] [⊢ e3 ≫ e3- ⇒ σ2]
    #:with ((σ1 σ2) (e2- e3-)) (infer/branch #'{e2 e3})
    [σ2 τ= σ1 #:for e2]
    --------
@@ -257,6 +269,7 @@
 
 (define-typed-syntax lambda
   [(_ ([x:id (~datum :) ty:type] ...) body) ≫
+   ; [[x ≫ x- : ty] ⊢ body ≫ body- ⇒ σ_out]
    #:with ((x- ...) (σ_out) (body-)) (infer/lin-vars #'{body}
                                                      #'([x : ty] ...))
    --------
@@ -265,6 +278,9 @@
 
 (define-typed-syntax share
   [(_ e) ≫
+   ; by "branching" against an expression that definitely doesn't
+   ; have any linear side effects (in this case, `()`), we can
+   ; ensure that the other expression doesn't have side effects either
    #:with ((σ _) (e- _))
    (infer/branch #'{e (U:#%app)}
                  #:err
