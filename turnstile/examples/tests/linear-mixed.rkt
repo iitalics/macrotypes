@@ -83,6 +83,11 @@
                        (tup (copy x) (copy x))))
             : (⊗ (⊗ Int Unit) (⊗ Int Unit)))
 
+(check-type (UL/test (let ([x (share (tup 2 ()))])
+                       (tup x x)))
+            : (⊗ (!! (⊗ Int Unit))
+                 (!! (⊗ Int Unit))))
+
 (check-type (UL (let ([x (share (tup 4 #f))])
                   (tup x x)))
             : (× (× Int Bool) (× Int Bool))
@@ -93,8 +98,8 @@
                 #:with-msg "x: may not share linear variable")
 
 (check-type (UL (let* ([b (share (box 3))]
-                       [(l1 x1) (unbox b)]
+                       [(l1 x1) (unbox (copy b))]
                        [b2 (box l1 4)]
-                       [(l2 x2) (unbox b)])
+                       [(l2 x2) (unbox (copy b))])
                   (begin b2 l2 x2)))
             : Int -> 3)

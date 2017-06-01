@@ -74,11 +74,6 @@
       [(~⊗ σ ...) (syntax/loc this-syntax (σ ...))]
       [_ #f]))
 
-  (define unlump
-    (syntax-parser
-      [(~!! σ) (unlump #'σ)]
-      [σ0 #'σ0]))
-
 
 
   ; set of current unused linear variables in context
@@ -311,20 +306,14 @@
                (~post (~fail (format "cannot copy type: ~a"
                                      (type->str #'σ_lump)))))
           #'σ_lump
-   #:do [(printf "lump: ~a  unlump: ~a\n" (type->str #'σ_lump) (type->str #'σ))]
+
+   #:with e-/copied
+   (syntax-parse #'σ
+     [(~Box _) #'(#%app- box- (#%app- unsafe-unbox e-))]
+     [_ #'e-])
    --------
-   [⊢ (-copy e- σ) ⇒ σ]])
+   [⊢ e-/copied ⇒ σ]])
 
-
-
-
-; syntax: (-copy <expr> <type>)
-(define-syntax -copy
-  (syntax-parser
-    [(_ e (~Box σ))
-     #'(#%app- box- (#%app- unsafe-unbox e))]
-
-    [(_ e σ) #'e]))
 
 
 ; syntax: (-delist (x ...) <list-expr> <body-expr>)
