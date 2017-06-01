@@ -35,22 +35,34 @@
            ;infer/branch
            )
 
-  ; put multiple syntax properties onto the given syntax object
-  ; (put-props stx key1 val1 key2 val2 ...) -> stx-
-  (define-syntax (put-props stx)
-    (syntax-case stx ()
-      [(_ expr key val . rst)
-       #'(put-props (syntax-property expr key val) . rst)]
-      [(_ expr)
-       #'expr]))
+  ; more generic version of built-in (infer ...) function
+  ; takes #:var-stx (vs ...), a list of syntax objects to use
+  ; in place of the variables.
+  ; => (xs- es- τs)
+  (define (new-infer es
+                     #:ctx [ctx '()]
+                     #:tag [tag (current-tag)]
+                     #:var-stx
+                     [var-stxs
+                      (syntax-parse ctx
+                        [([x:id sep:id τ] ...)
+                         #'{(make-variable-like-transformer
+                             (attach #'x 'sep #'τ)) ...}])])
+    (syntax-parse ctx
+      [([x:id sep:id τ] ...)
+       #:with (e ...) es
+       #:with (vstx ...) var-stxs
+       #:with ((~literal #%plain-lambda) xs+
+               (~let*-syntax
+                ((~literal #%expression) e+) ... (~literal void)))
+       (expand/df #`(λ (x ...)
+                      (let*-syntax ([x vstx] ...)
+                                   (#%expression e) ... void)))
+       (list #'xs+
+             #'(e+ ...)
+             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
 
-  ; utility for writing variable-like transformers
-    (define re-apply
-      (syntax-parser
-        [(id . args)
-         #:with ap (datum->syntax this-syntax '#%app)
-         (syntax/loc this-syntax
-           (ap id . args))]))
+
 
   ; is the type a type whose values can only be bound once?
   ; e.g. all linear types except lump type (!! x)
@@ -84,6 +96,14 @@
   ; like make-variable-like-transformer, but for linear variables
   (define (make-linear-variable-transformer x tag ty-stx)
     (define ty ((current-type-eval) ty-stx))
+
+    (define re-apply
+      (syntax-parser
+        [(id . args)
+         #:with ap (datum->syntax this-syntax '#%app)
+         (syntax/loc this-syntax
+           (ap id . args))]))
+
     (cond
       [(linear-type? ty)
        (set! unused-lin-vars (set-add unused-lin-vars x))
@@ -92,13 +112,13 @@
           (unless (set-member? unused-lin-vars x)
             (raise-syntax-error #f "linear variable used more than once" this-syntax))
           (set! unused-lin-vars (set-remove unused-lin-vars x))
-          (put-props x tag ty)]
+          (attach x tag ty)]
 
          [_ (re-apply this-syntax)])]
 
       [else
        (syntax-parser
-         [:id (put-props x tag ty)]
+         [:id (attach x tag ty)]
          [_ (re-apply this-syntax)])]))
 
 
@@ -112,33 +132,6 @@
         (raise-syntax-error #f
                             "linear variable unused"
                             v))))
-
-
-
-  ; more generic version of built-in (infer ...) function
-  ; => (xs- es- τs)
-  (define (new-infer es
-                     #:ctx [ctx '()]
-                     #:tag [tag (current-tag)]
-                     #:var-stx
-                     [var-stxs
-                      (syntax-parse ctx
-                        [([x:id sep:id τ] ...)
-                         #'{(make-variable-like-transformer
-                             (attach #'x 'sep #'τ)) ...}])])
-    (syntax-parse ctx
-      [([x:id sep:id τ] ...)
-       #:with (e ...) es
-       #:with (vstx ...) var-stxs
-       #:with ((~literal #%plain-lambda) xs+
-               (~let*-syntax
-                ((~literal #%expression) e+) ... (~literal void)))
-       (expand/df #`(λ (x ...)
-                      (let*-syntax ([x vstx] ...)
-                                   (#%expression e) ... void)))
-       (list #'xs+
-             #'(e+ ...)
-             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
 
 
 
