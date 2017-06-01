@@ -74,13 +74,13 @@
 
 
 ;; sharing
-#|
+
 (check-type (UL (let ([x (share (tup 2 ()))])
                   x))
             : (× Int Unit))
 
 (check-type (UL/test (let ([x (share (tup 2 ()))])
-                       (tup x x)))
+                       (tup (copy x) (copy x))))
             : (⊗ (⊗ Int Unit) (⊗ Int Unit)))
 
 (check-type (UL (let ([x (share (tup 4 #f))])
@@ -98,4 +98,3 @@
                        [(l2 x2) (unbox b)])
                   (begin b2 l2 x2)))
             : Int -> 3)
-|#

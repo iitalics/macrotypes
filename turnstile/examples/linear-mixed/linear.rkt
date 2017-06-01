@@ -18,7 +18,8 @@
          racket/unsafe/ops)
 
 (provide (type-out -o ⊗ Box Loc !!)
-         tup box unbox share
+         tup box unbox
+         share copy
          let let* if lambda
          (rename-out [lambda λ]))
 
@@ -303,20 +304,25 @@
    [⊢ e- ⇒ (!! σ)]])
 
 
+(define-typed-syntax copy
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ σ_lump]
+   #:with (~or (~!! σ)
+               (~post (~fail (format "cannot copy type: ~a"
+                                     (type->str #'σ_lump)))))
+          #'σ_lump
+   #:do [(printf "lump: ~a  unlump: ~a\n" (type->str #'σ_lump) (type->str #'σ))]
+   --------
+   [⊢ (-copy e- σ) ⇒ σ]])
+
+
 
 
 ; syntax: (-copy <expr> <type>)
 (define-syntax -copy
   (syntax-parser
-    [(_ e (~!! σ)) #'(-copy e σ)]
-
     [(_ e (~Box σ))
-     #'(#%app- box- (-copy (#%app- unsafe-unbox e) σ))]
-
-    [(_ e (~⊗ σ ...))
-     #:with (tmp ...) (generate-temporaries #'(σ ...))
-     #'(-delist (tmp ...) e
-                (#%app- list- (-copy tmp σ) ...))]
+     #'(#%app- box- (#%app- unsafe-unbox e))]
 
     [(_ e σ) #'e]))
 

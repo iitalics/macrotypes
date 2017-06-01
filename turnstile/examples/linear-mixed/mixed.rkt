@@ -34,9 +34,10 @@
                      [L:let let]
                      [L:let* let*])
          #%module-begin require
-         lambda tup
-         box unbox share
-         UL)
+         lambda tup ; dispatched forms
+         box unbox share copy ; linear only forms
+         UL ; language barriers
+         )
 
 
 #|
@@ -52,6 +53,7 @@ tup          ×   <  >   ×
 box                     ×
 unbox                   ×
 share                   ×
+copy                    ×
 UL                               ×
 
 |#
@@ -132,6 +134,7 @@ UL                               ×
 (redefine-syntax box   #:linear)
 (redefine-syntax unbox #:linear)
 (redefine-syntax share #:linear)
+(redefine-syntax copy  #:linear)
 
 
 (define-typed-syntax UL
