@@ -29,9 +29,10 @@
   (provide linear-type?
            linear-parse-fun
            linear-parse-tuple
-           infer/lin-vars
-           infer/branch
-           make-linear-var-transformer)
+           ;infer/lin-vars
+           ;make-linear-var-transformer
+           ;infer/branch
+           )
 
   ; put multiple syntax properties onto the given syntax object
   ; (put-props stx key1 val1 key2 val2 ...) -> stx-
@@ -42,6 +43,13 @@
       [(_ expr)
        #'expr]))
 
+  ; utility for writing variable-like transformers
+    (define re-apply
+      (syntax-parser
+        [(id . args)
+         #:with ap (datum->syntax this-syntax '#%app)
+         (syntax/loc this-syntax
+           (ap id . args))]))
 
   ; is the type a type whose values can only be bound once?
   ; e.g. all linear types except lump type (!! x)
@@ -83,61 +91,64 @@
 
 
   ; like make-variable-like-transformer, but for linear variables
-  (define (make-linear-var-transformer ty-stx tag x)
+  (define (make-linear-variable-transformer x tag ty-stx)
     (define ty ((current-type-eval) ty-stx))
-    (syntax-parser
-      [:id
-       (cond
-         [(linear-type? ty)
+    (cond
+      [(linear-type? ty)
+       (set! unused-lin-vars (set-add unused-lin-vars x))
+       (syntax-parser
+         [:id
           (unless (set-member? unused-lin-vars x)
             (raise-syntax-error #f "linear variable used more than once" this-syntax))
           (set! unused-lin-vars (set-remove unused-lin-vars x))
           (put-props x tag ty)]
 
-         ; shared type needs to be copied
-         ; FIXME: make this explicit or not?
-         [(!!? ty)
-          (put-props #`(-copy #,x #,ty) tag (unlump ty))]
+         [_ (re-apply this-syntax)])]
 
-         [else (put-props x tag ty)])]
-
-      [(id . args)
-       #:with ap (datum->syntax this-syntax '#%app)
-       (syntax/loc this-syntax
-         (ap id . args))]))
+      [else
+       (syntax-parser
+         [:id (put-props x tag ty)]
+         [_ (re-apply this-syntax)])]))
 
 
-  ; infer the type of every expression in es. introduces new linear variables
-  ; given the form ([x : ty] ...). returns list (xs- ts es-) where xs- are the
-  ; expanded versions of the variables, ts are the resulting type of the expressions,
-  ; and es- are the expanded forms of the expressions.
-  (define (infer/lin-vars es ctx-new)
-    (syntax-parse ctx-new
-      [([x:id tag ty] ...)
-       ; this is quite ugly, but it is doing exactly what is done
-       ; in turnstile's (infer ...) function in order to introduce
-       ; new variables into scope
+
+  ; calls the given thunk but raises an exception if any newly introduced variables
+  ; were not unused
+  (define (with-linear-vars-checked fn)
+    (define ulv-before unused-lin-vars)
+    (begin0 (fn)
+      (for ([v (in-set (set-subtract unused-lin-vars ulv-before))])
+        (raise-syntax-error #f
+                            "linear variable unused"
+                            v))))
+
+
+
+  ; more generic version of built-in (infer ...) function
+  ; => (xs- es- τs)
+  (define (new-infer es
+                     #:ctx [ctx '()]
+                     #:tag [tag (current-tag)]
+                     #:var-stx
+                     [var-stxs
+                      (syntax-parse ctx
+                        [([x:id sep:id τ] ...)
+                         #'{(make-variable-like-transformer
+                             (attach #'x 'sep #'τ)) ...}])])
+    (syntax-parse ctx
+      [([x:id sep:id τ] ...)
        #:with (e ...) es
-       (syntax-parse (local-expand #'(#%plain-lambda
-                                      (x ...)
-                                      (with-new-linear-vars ([x ty] ...)
-                                        (let-syntax ([x (make-linear-var-transformer #`ty `tag #`x)] ...)
-                                          (#%expression e) ...)))
-                                   'expression
-                                   null)
-         #:literals (#%plain-lambda let-values #%expression)
-         [(#%plain-lambda (x- ...)
-                          ; (let-syntax ...) adds a bunch of empty let-values's that
-                          ; we have to get rid of
-                          (let-values ()
-                            (let-values ()
-                              (#%expression e-) ...)))
-          #:with (τ ...) (stx-map (lambda (s) (or (detach s ':)
-                                             (raise-syntax-error #f "no attached type" s)))
-                                  #'(e- ...))
-          (list #'(x- ...)
-                #'(τ ...)
-                #'(e- ...))])]))
+       #:with (vstx ...) var-stxs
+       #:with ((~literal #%plain-lambda) xs+
+               (~let*-syntax
+                ((~literal #%expression) e+) ... (~literal void)))
+       (expand/df #`(λ (x ...)
+                      (let*-syntax ([x vstx] ...)
+                                   (#%expression e) ... void)))
+       (list #'xs+
+             #'(e+ ...)
+             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
+
 
 
   ; infer the type of every expression in es, but expect the linear variable
@@ -152,8 +163,8 @@
     (define ulv unused-lin-vars)
     (match (map (lambda (e)
                   (set! unused-lin-vars ulv)
-                  (syntax-parse (infer/lin-vars (list e) '())
-                    [(_ (σ) (e-))
+                  (syntax-parse (new-infer (list e))
+                    [(_ (e-) (σ))
                      (list #'σ #'e- unused-lin-vars)]))
                 (syntax->list es))
       [(list (list ts es- ulvs) ...)
@@ -168,20 +179,6 @@
        (list ts es-)]))
 
   )
-
-(define-syntax with-new-linear-vars
-  (syntax-parser
-    [(_ ([x σ] ...) body)
-     (let ([lxs (immutable-free-id-set
-                 (for/list ([x (in-syntax #'(x ...))]
-                            [t (in-syntax #'(σ ...))]
-                            #:when (linear-type? ((current-type-eval) t)))
-                   x))])
-       (set! unused-lin-vars (set-union unused-lin-vars lxs))
-       (let ([body- (local-expand #'body 'expression '())])
-         (for ([u (in-set (set-intersect unused-lin-vars lxs))])
-           (raise-syntax-error #f "linear variable unused" u))
-         body-))]))
 
 
 
@@ -227,7 +224,12 @@
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
    ; [[x ≫ x- : σ] ⊢ e ≫ e- ⇒ σ_out]
-   #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{e} #'([x : σ] ...))
+   #:with ((x- ...) (e-) (σ_out))
+   (with-linear-vars-checked
+     (lambda ()
+       (new-infer #'{e}
+                  #:ctx #'([x : σ] ...)
+                  #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
 
@@ -242,7 +244,12 @@
    #:fail-unless (stx-length=? #'(σ ...) #'(x ...)) "wrong number of elements in tuple"
 
    ; [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:with ((x- ...) (σ_out) (e-)) (infer/lin-vars #'{(let* vars e)} #'([x : σ] ...))
+   #:with ((x- ...) (e-) (σ_out))
+   (with-linear-vars-checked
+     (lambda ()
+       (new-infer #'{(let* vars e)}
+                  #:ctx #'([x : σ] ...)
+                  #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})))
 
    #:with tmp (generate-temporary #'rhs)
    --------
@@ -270,8 +277,12 @@
 (define-typed-syntax lambda
   [(_ ([x:id (~datum :) ty:type] ...) body) ≫
    ; [[x ≫ x- : ty] ⊢ body ≫ body- ⇒ σ_out]
-   #:with ((x- ...) (σ_out) (body-)) (infer/lin-vars #'{body}
-                                                     #'([x : ty] ...))
+   #:with ((x- ...) (body-) (σ_out))
+   (with-linear-vars-checked
+     (lambda ()
+       (new-infer #'{body}
+                  #:ctx #'([x : σ] ...)
+                  #:var-stx #'{(make-linear-variable-transformer #'x ': #'ty) ...})))
    --------
    [⊢ (λ- (x- ...) body-) ⇒ (-o ty.norm ... σ_out)]])
 

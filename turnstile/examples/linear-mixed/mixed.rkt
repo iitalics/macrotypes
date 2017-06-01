@@ -21,8 +21,8 @@
                   linear-parse-fun
                   linear-parse-tuple
                   linear-type?
-                  infer/lin-vars
-                  infer/branch
+                  ;infer/lin-vars
+                  ;infer/branch
                   ))
 
 (provide Unit Int Bool Str -> × -o ⊗ Box Loc !!
