@@ -103,3 +103,22 @@
                        [(l2 x2) (unbox (copy b))])
                   (begin b2 l2 x2)))
             : Int -> 3)
+
+
+
+;; standard lib
+
+(check-type (UL (let ([zero? (share (lambda ([x : Int])
+                                      (if (< x 0) #f
+                                          (if (< 0 x) #f
+                                              #t))))])
+                  (tup (zero? 2)
+                       (zero? 0)
+                       (zero? -2))))
+            : (× Bool Bool Bool)
+            -> (tup #f #t #f))
+
+(check-type (UL (let* ([b (box 3)]
+                       [(loc x) (unbox (inc (inc (inc b))))])
+                  (begin loc x)))
+            : Int -> 6)

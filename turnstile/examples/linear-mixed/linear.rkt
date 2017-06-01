@@ -67,6 +67,7 @@
   (define linear-parse-fun
     (syntax-parser
       [(~-o σ ...) (syntax/loc this-syntax (σ ...))]
+      [(~!! (~-o σ ...)) (syntax/loc this-syntax (σ ...))]
       [_ #f]))
 
   (define linear-parse-tuple

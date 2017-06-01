@@ -4,6 +4,7 @@
 
 (require (prefix-in U: "unrestric.rkt")
          (prefix-in L: "linear.rkt")
+         racket/unsafe/ops
 
          (only-in "unrestric.rkt"
                   Unit Int Bool Str -> × ~-> ~×
@@ -38,6 +39,18 @@
          box unbox share copy ; linear only forms
          UL ; language barriers
          )
+
+(provide (typed-out [+ : (-> Int Int Int)]
+                    [- : (-> Int Int Int)]
+                    [* : (-> Int Int Int)]
+                    [< : (-> Int Int Bool)]
+                    [[inc : (!! (-o (Box Int) (Box Int)))] inc]))
+
+(define (inc b)
+  (unsafe-set-box! b (add1 (unsafe-unbox b)))
+  b)
+
+
 
 
 #|
