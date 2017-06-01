@@ -122,3 +122,14 @@
                        [(loc x) (unbox (inc (inc (inc b))))])
                   (begin loc x)))
             : Int -> 6)
+
+(check-type (UL (let* ([p (share (tup (box 3) ()))]
+                       [(b1 _) (copy p)]
+                       [(l1 x) (unbox b1)]
+                       [b1+ (box l1 4)]
+                       [(b2 _) (copy p)]
+                       [(l2 y) (unbox b2)])
+                  (begin b1+ l2
+                         (tup x y))))
+            : (× Int Int)
+            -> (tup 3 3))

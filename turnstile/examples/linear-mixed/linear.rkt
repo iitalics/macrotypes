@@ -63,7 +63,6 @@
       [_ #f]))
 
 
-
   (define linear-parse-fun
     (syntax-parser
       [(~-o σ ...) (syntax/loc this-syntax (σ ...))]
@@ -76,15 +75,10 @@
       [_ #f]))
 
 
-
   ; set of current unused linear variables in context
   (define unused-lin-vars
     (immutable-free-id-set))
 
-
-  ; procedure that gets called around linear variable usage
-  (define current-with-linear-var
-    (make-parameter values))
 
 
   ; like make-variable-like-transformer, but for linear variables
@@ -300,6 +294,23 @@
    [⊢ e- ⇒ (!! σ)]])
 
 
+(define-for-syntax (copy-expr expr ty)
+  (syntax-parse ty
+    [(~⊗ σ ...)
+     #:when (ormap Box? (syntax-e #'(σ ...)))
+     #:with (tmp ...) (generate-temporaries #'(σ ...))
+     #:with (tmp+ ...) (stx-map copy-expr #'(tmp ...) #'(σ ...))
+     #`(-delist (tmp ...) #,expr
+                (#%app- list- tmp+ ...))]
+
+    [(~Box σ)
+     #:with e/unbox #`(#%app- unsafe-unbox #,expr)
+     #:with e+ (copy-expr #'e/unbox #'σ)
+     #'(#%app- box- e+)]
+
+    [_ expr]))
+
+
 (define-typed-syntax copy
   [(_ e) ≫
    [⊢ e ≫ e- ⇒ σ_lump]
@@ -308,10 +319,7 @@
                                      (type->str #'σ_lump)))))
           #'σ_lump
 
-   #:with e-/copied
-   (syntax-parse #'σ
-     [(~Box _) #'(#%app- box- (#%app- unsafe-unbox e-))]
-     [_ #'e-])
+   #:with e-/copied (copy-expr #'e- #'σ)
    --------
    [⊢ e-/copied ⇒ σ]])
 
