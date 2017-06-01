@@ -30,23 +30,25 @@
                      [U:#%datum #%datum]
                      [U:begin begin]
                      [U:#%app #%app]
-                     [L:if if])
+                     [L:if if]
+                     [L:let let]
+                     [L:let* let*])
          #%module-begin require
-         let let* lambda tup
+         lambda tup
          box unbox share
          UL)
 
 
 #|
 Syntax    Unrestr     Linear    New
-#%datum      ×
-begin        ×
-let          ×          ×
-let*         ×          ×
-if           ×          ×
-#%app        ×
-lambda       ×          ×
-tup          ×          ×
+#%datum      ×    <
+begin        ×    <
+let          ×      >   ×
+let*         ×      >   ×
+if           ×   <  >   ×
+#%app        ×   <
+lambda       ×   <  >   ×
+tup          ×   <  >   ×
 box                     ×
 unbox                   ×
 share                   ×
@@ -125,8 +127,6 @@ UL                               ×
               [else #'[≻ (x/U . tmp)]])])]))
 
 
-(redefine-syntax let   #:both)
-(redefine-syntax let*  #:both)
 (redefine-syntax lambda #:both)
 (redefine-syntax tup   #:both)
 (redefine-syntax box   #:linear)
