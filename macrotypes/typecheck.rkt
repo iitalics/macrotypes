@@ -919,7 +919,6 @@
   ;;       but I'm not sure it properly generalizes
   ;;       eg, what if I need separate type-eval and kind-eval fns?
   ;; - should infer be moved into define-syntax-category?
-
   (define (infer/old es #:ctx [ctx null] #:tvctx [tvctx null]
                     #:tag [tag (current-tag)] ; the "type" to return from es
                     #:expa [expa expand/df] ; used to expand e
@@ -964,24 +963,34 @@
   ; to expand the variables.
   ; => (tvs- xs- es- τs)
   (define (infer es
+                 #:expa [expa expand/df]
+                 #:tev [tev #'(current-type-eval)]
+                 #:kev [kev #'(current-type-eval)]
                  #:tvctx [tvctx '()]
                  #:ctx [ctx '()]
                  #:tag [tag (current-tag)]
                  #:var-stx [var-stxs
-                            (syntax-parse ctx
-                              [([x:id (~seq sep:id τ) ...] ...)
-                               #'((make-variable-like-transformer
-                                   (attachs #'x '(sep ...) #'(τ ...))) ...)])]
-                 #:expa [expa expand/df])
-    (syntax-parse ctx
-      [([x:id sep:id τ] ...)
-       #:with (~or ([tv (~seq tvsep:id tvk) ...] ...)
+                            (stx-map (syntax-parser
+                                       [[x:id (~seq sep:id τ) ...]
+                                        #`(make-variable-like-transformer
+                                           (attachs #'x '(sep ...) #'(τ ...)
+                                                    #:ev #,tev))]
+                                       [X:id
+                                        #`(make-variable-like-transformer
+                                           (mk-tyvar (attach #'X ':: (#,kev #'#%type))))])
+                                     ctx)]
+                 )
+
+    (syntax-parse es
+      [(e ...)
+       #:with ((~or (X:id X-stx)
+                    ([x:id . _] x-stx)) ...)
+              (stx-map list ctx var-stxs)
+       #:with (~or ([tv:id (~seq tvsep:id tvk) ...] ...)
                    (~and (tv:id ...)
                          (~parse ([(tvsep ...) (tvk ...)] ...)
                                  (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...)))))
-                   tvctx
-       #:with (e ...) es
-       #:with (v-stx ...) var-stxs
+              tvctx
        #:with ((~literal #%plain-lambda) tvs+
                (~let*-syntax
                 ((~literal #%expression)
@@ -990,17 +999,18 @@
                    ((~literal #%expression) e+) ... (~literal void))))))
        (expa
         #`(λ (tv ...)
-            (let*-syntax ([tv (make-rename-transformer
+            (let*-syntax ([tv (make-rename-transformer ; TODO: make this an argument too?
                                (mk-tyvar
-                                (attachs #'tv '(tvsep ...) #'(tvk ...))))] ...)
-              (λ (x ...)
-                (let*-syntax ([x v-stx] ...)
+                                (attachs #'tv '(tvsep ...) #'(tvk ...)
+                                         #:kev #,kev)))] ...)
+              (λ (X ... x ...)
+                (let*-syntax ([X X-stx] ...
+                              [x x-stx] ...)
                   (#%expression e) ... void)))))
        (list #'tvs+
              #'xs+
              #'(e+ ...)
              (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
-
 
 
   ;; fns derived from infer ---------------------------------------------------
