@@ -59,7 +59,7 @@ Syntax    Unrestr     Linear    New
 begin        ×    <
 let          ×      >   ×
 let*         ×      >   ×
-if           ×   <  >   ×
+if           ×      >   ×
 #%app        ×   <
 lambda       ×   <  >   ×
 tup          ×   <  >   ×

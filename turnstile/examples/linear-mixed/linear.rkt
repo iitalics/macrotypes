@@ -37,28 +37,43 @@
 
   ; more generic version of built-in (infer ...) function
   ; takes #:var-stx (vs ...), a list of syntax objects to use
-  ; in place of the variables.
+  ; to expand the variables.
   ; => (xs- es- τs)
   (define (new-infer es
+                     #:tvctx [tvctx '()]
                      #:ctx [ctx '()]
                      #:tag [tag (current-tag)]
                      #:var-stx
                      [var-stxs
                       (syntax-parse ctx
-                        [([x:id sep:id τ] ...)
-                         #'{(make-variable-like-transformer
-                             (attach #'x 'sep #'τ)) ...}])])
+                        [([x:id (~seq sep:id τ) ...] ...)
+                         #'((make-variable-like-transformer
+                             (attachs #'x '(sep ...) #'(τ ...))) ...)])])
     (syntax-parse ctx
       [([x:id sep:id τ] ...)
+       #:with (~or ([tv (~seq tvsep:id tvk) ...] ...)
+                   (~and (tv:id ...)
+                         (~parse ([(tvsep ...) (tvk ...)] ...)
+                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...)))))
+                   tvctx
        #:with (e ...) es
-       #:with (vstx ...) var-stxs
-       #:with ((~literal #%plain-lambda) xs+
+       #:with (v-stx ...) var-stxs
+       #:with ((~literal #%plain-lambda) tvs+
                (~let*-syntax
-                ((~literal #%expression) e+) ... (~literal void)))
-       (expand/df #`(λ (x ...)
-                      (let*-syntax ([x vstx] ...)
-                                   (#%expression e) ... void)))
-       (list #'xs+
+                ((~literal #%expression)
+                 ((~literal #%plain-lambda) xs+
+                  (~let*-syntax
+                   ((~literal #%expression) e+) ... (~literal void))))))
+       (expand/df
+        #`(λ (tv ...)
+            (let*-syntax ([tv (make-rename-transformer
+                               (mk-tyvar
+                                (attachs #'tv '(tvsep ...) #'(tvk ...))))] ...)
+              (λ (x ...)
+                (let*-syntax ([x v-stx] ...)
+                  (#%expression e) ... void)))))
+       (list #'tvs+
+             #'xs+
              #'(e+ ...)
              (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
 
@@ -145,11 +160,11 @@
                                                          "linear variable may be unused"
                                                          u expr))])
     (define ulv unused-lin-vars)
-    (match (map (lambda (e)
-                  (set! unused-lin-vars ulv)
-                  (syntax-parse (new-infer (list e))
-                    [(_ (e-) (σ))
-                     (list #'σ #'e- unused-lin-vars)]))
+    (match (map (syntax-parser
+                  [e
+                   #:do [(set! unused-lin-vars ulv)]
+                   #:with (_ _ (e-) (σ)) (new-infer #'{e})
+                   (list #'σ #'e- unused-lin-vars)])
                 (syntax->list es))
       [(list (list ts es- ulvs) ...)
 
@@ -208,7 +223,7 @@
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
    ; [[x ≫ x- : σ] ⊢ e ≫ e- ⇒ σ_out]
-   #:with ((x- ...) (e-) (σ_out))
+   #:with (_ (x- ...) (e-) (σ_out))
    (with-linear-vars-checked
      (lambda ()
        (new-infer #'{e}
@@ -228,14 +243,13 @@
    #:fail-unless (stx-length=? #'(σ ...) #'(x ...)) "wrong number of elements in tuple"
 
    ; [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:with ((x- ...) (e-) (σ_out))
+   #:with (_ (x- ...) (e-) (σ_out))
    (with-linear-vars-checked
      (lambda ()
        (new-infer #'{(let* vars e)}
                   #:ctx #'([x : σ] ...)
                   #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})))
 
-   #:with tmp (generate-temporary #'rhs)
    --------
    [⊢ (-delist (x- ...) rhs- e-) ⇒ σ_out]]
 
@@ -261,7 +275,7 @@
 (define-typed-syntax lambda
   [(_ ([x:id (~datum :) ty:type] ...) body) ≫
    ; [[x ≫ x- : ty] ⊢ body ≫ body- ⇒ σ_out]
-   #:with ((x- ...) (body-) (σ_out))
+   #:with (_ (x- ...) (body-) (σ_out))
    (with-linear-vars-checked
      (lambda ()
        (new-infer #'{body}
@@ -290,7 +304,6 @@
 (define-for-syntax (copy-expr expr ty)
   (syntax-parse ty
     [(~⊗ σ ...)
-     #:when (ormap Box? (syntax-e #'(σ ...)))
      #:with (tmp ...) (generate-temporaries #'(σ ...))
      #:with (tmp+ ...) (stx-map copy-expr #'(tmp ...) #'(σ ...))
      #`(-delist (tmp ...) #,expr
@@ -319,7 +332,7 @@
 
 
 ; syntax: (-delist (x ...) <list-expr> <body-expr>)
-; private macro for destructuring a list into variables
+; private macro for (unsafely) destructuring a list into variables
 (define-syntax -delist
   (syntax-parser
     [(_ () l e) #'e]
