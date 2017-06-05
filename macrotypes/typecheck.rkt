@@ -971,6 +971,9 @@
                  #:tag [tag (current-tag)]
                  #:var-stx [var-stxs
                             (stx-map (syntax-parser
+                                       [[x:id τ]
+                                        #`(make-variable-like-transformer
+                                           (attach #'x '#,tag (#,tev #'τ)))]
                                        [[x:id (~seq sep:id τ) ...]
                                         #`(make-variable-like-transformer
                                            (attachs #'x '(sep ...) #'(τ ...)
@@ -978,8 +981,7 @@
                                        [X:id
                                         #`(make-variable-like-transformer
                                            (mk-tyvar (attach #'X ':: (#,kev #'#%type))))])
-                                     ctx)]
-                 )
+                                     ctx)])
 
     (syntax-parse es
       [(e ...)
