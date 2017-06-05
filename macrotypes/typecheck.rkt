@@ -919,70 +919,17 @@
   ;;       but I'm not sure it properly generalizes
   ;;       eg, what if I need separate type-eval and kind-eval fns?
   ;; - should infer be moved into define-syntax-category?
-  (define (infer/old es #:ctx [ctx null] #:tvctx [tvctx null]
-                    #:tag [tag (current-tag)] ; the "type" to return from es
-                    #:expa [expa expand/df] ; used to expand e
-                    #:tev [tev #'(current-type-eval)]  ; type-eval (τ in ctx)
-                    #:key [kev #'(current-type-eval)]) ; kind-eval (tvk in tvctx)
-     (syntax-parse ctx
-       [((~or X:id [x:id (~seq sep:id τ) ...]) ...) ; dont expand; τ may reference to tv
-       #:with (~or (~and (tv:id ...)
-                         (~parse ([(tvsep ...) (tvk ...)] ...)
-                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...))))
-                   ([tv (~seq tvsep:id tvk) ...] ...))
-                   tvctx
-       #:with (e ...) es
-       #:with ((~literal #%plain-lambda) tvs+
-               (~let*-syntax
-                ((~literal #%expression)
-                 ((~literal #%plain-lambda) xs+
-                  (~let*-syntax
-                   ((~literal #%expression) e+) ... (~literal void))))))
-        (expa
-        #`(λ (tv ...)
-            (let*-syntax ([tv (make-rename-transformer
-                               (mk-tyvar
-                                (attachs #'tv '(tvsep ...) #'(tvk ...)
-                                         #:ev #,kev)))] ...)
-              (λ (X ... x ...)
-                (let*-syntax ([X (make-variable-like-transformer
-                                 (mk-tyvar (attach #'X ':: (#,kev #'#%type))))] ...
-                              [x (make-variable-like-transformer
-                                  (attachs #'x '(sep ...) #'(τ ...)
-                                           #:ev #,tev))] ...)
-                  (#%expression e) ... void)))))
-       (list #'tvs+ #'xs+ 
-             #'(e+ ...) 
-             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]
-      [([x τ] ...) (infer es #:ctx #`([x #,tag τ] ...) #:tvctx tvctx #:tag tag)]))
-
-  ;; ================== ;;
-
-  ; more generic version of built-in (infer ...) function
-  ; takes #:var-stx (vs ...), a list of syntax objects to use
-  ; to expand the variables.
-  ; => (tvs- xs- es- τs)
+  ;; added: '#:var-stx lst' specifies the variable transformers used to bind
+  ;;   ctx in the expansion of the expressions.
+  ;; TODO: delete #:tev and #:kev?
   (define (infer es
-                 #:expa [expa expand/df]
-                 #:tev [tev #'(current-type-eval)]
-                 #:kev [kev #'(current-type-eval)]
                  #:tvctx [tvctx '()]
                  #:ctx [ctx '()]
                  #:tag [tag (current-tag)]
-                 #:var-stx [var-stxs
-                            (stx-map (syntax-parser
-                                       [[x:id τ]
-                                        #`(make-variable-like-transformer
-                                           (attach #'x '#,tag (#,tev #'τ)))]
-                                       [[x:id (~seq sep:id τ) ...]
-                                        #`(make-variable-like-transformer
-                                           (attachs #'x '(sep ...) #'(τ ...)
-                                                    #:ev #,tev))]
-                                       [X:id
-                                        #`(make-variable-like-transformer
-                                           (mk-tyvar (attach #'X ':: (#,kev #'#%type))))])
-                                     ctx)])
-
+                 #:expa [expa expand/df]
+                 #:tev [tev #'(current-type-eval)]
+                 #:kev [kev #'(current-type-eval)]
+                 #:var-stx [var-stxs (var-transformers-for-context ctx tag tev kev)])
     (syntax-parse es
       [(e ...)
        #:with ((~or (X:id X-stx)
@@ -1013,6 +960,23 @@
              #'xs+
              #'(e+ ...)
              (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
+
+  (define (var-transformers-for-context ctx tag tev kev)
+    (stx-map (syntax-parser
+               ; missing seperator
+               [[x:id τ] 
+                #`(make-variable-like-transformer
+                   (attach #'x '#,tag (#,tev #'τ)))]
+               ; seperators given
+               [[x:id (~seq sep:id τ) ...]
+                #`(make-variable-like-transformer
+                   (attachs #'x '(sep ...) #'(τ ...)
+                            #:ev #,tev))]
+               ; just variable; interpreted as type variable
+               [X:id
+                #`(make-variable-like-transformer
+                   (mk-tyvar (attach #'X ':: (#,kev #'#%type))))])
+             ctx))
 
 
   ;; fns derived from infer ---------------------------------------------------
