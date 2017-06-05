@@ -137,16 +137,17 @@
          [_ (re-apply this-syntax)])]))
 
 
-
-  ; calls the given thunk but raises an exception if any newly introduced variables
+  ; evaluates the body but raises an exception if any newly introduced variables
   ; were not unused
-  (define (with-linear-vars-checked fn)
-    (define ulv-before unused-lin-vars)
-    (begin0 (fn)
-      (for ([v (in-set (set-subtract unused-lin-vars ulv-before))])
-        (raise-syntax-error #f
-                            "linear variable unused"
-                            v))))
+  (define-syntax with-linear-vars-checked
+    (syntax-parser
+      [(_ body ...+)
+       #'(let ([ulv-before unused-lin-vars])
+           (begin0 (begin body ...)
+             (for ([v (in-set (set-subtract unused-lin-vars ulv-before))])
+               (raise-syntax-error #f
+                                   "linear variable unused"
+                                   v))))]))
 
 
 
@@ -225,10 +226,9 @@
    ; [[x ≫ x- : σ] ⊢ e ≫ e- ⇒ σ_out]
    #:with (_ (x- ...) (e-) (σ_out))
    (with-linear-vars-checked
-     (lambda ()
-       (new-infer #'{e}
-                  #:ctx #'([x : σ] ...)
-                  #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})))
+     (new-infer #'{e}
+                #:ctx #'([x : σ] ...)
+                #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...}))
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
 
@@ -245,10 +245,9 @@
    ; [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
    #:with (_ (x- ...) (e-) (σ_out))
    (with-linear-vars-checked
-     (lambda ()
-       (new-infer #'{(let* vars e)}
-                  #:ctx #'([x : σ] ...)
-                  #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})))
+     (new-infer #'{(let* vars e)}
+                #:ctx #'([x : σ] ...)
+                #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...}))
 
    --------
    [⊢ (-delist (x- ...) rhs- e-) ⇒ σ_out]]
@@ -277,10 +276,9 @@
    ; [[x ≫ x- : ty] ⊢ body ≫ body- ⇒ σ_out]
    #:with (_ (x- ...) (body-) (σ_out))
    (with-linear-vars-checked
-     (lambda ()
-       (new-infer #'{body}
-                  #:ctx #'([x : σ] ...)
-                  #:var-stx #'{(make-linear-variable-transformer #'x ': #'ty) ...})))
+     (new-infer #'{body}
+                #:ctx #'([x : σ] ...)
+                #:var-stx #'{(make-linear-variable-transformer #'x ': #'ty) ...}))
    --------
    [⊢ (λ- (x- ...) body-) ⇒ (-o ty.norm ... σ_out)]])
 
