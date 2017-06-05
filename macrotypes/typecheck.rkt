@@ -919,7 +919,8 @@
   ;;       but I'm not sure it properly generalizes
   ;;       eg, what if I need separate type-eval and kind-eval fns?
   ;; - should infer be moved into define-syntax-category?
-  (define (infer es #:ctx [ctx null] #:tvctx [tvctx null]
+
+  (define (infer/old es #:ctx [ctx null] #:tvctx [tvctx null]
                     #:tag [tag (current-tag)] ; the "type" to return from es
                     #:expa [expa expand/df] ; used to expand e
                     #:tev [tev #'(current-type-eval)]  ; type-eval (τ in ctx)
@@ -955,6 +956,52 @@
              #'(e+ ...) 
              (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]
       [([x τ] ...) (infer es #:ctx #`([x #,tag τ] ...) #:tvctx tvctx #:tag tag)]))
+
+  ;; ================== ;;
+
+  ; more generic version of built-in (infer ...) function
+  ; takes #:var-stx (vs ...), a list of syntax objects to use
+  ; to expand the variables.
+  ; => (tvs- xs- es- τs)
+  (define (infer es
+                 #:tvctx [tvctx '()]
+                 #:ctx [ctx '()]
+                 #:tag [tag (current-tag)]
+                 #:var-stx [var-stxs
+                            (syntax-parse ctx
+                              [([x:id (~seq sep:id τ) ...] ...)
+                               #'((make-variable-like-transformer
+                                   (attachs #'x '(sep ...) #'(τ ...))) ...)])]
+                 #:expa [expa expand/df])
+    (syntax-parse ctx
+      [([x:id sep:id τ] ...)
+       #:with (~or ([tv (~seq tvsep:id tvk) ...] ...)
+                   (~and (tv:id ...)
+                         (~parse ([(tvsep ...) (tvk ...)] ...)
+                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...)))))
+                   tvctx
+       #:with (e ...) es
+       #:with (v-stx ...) var-stxs
+       #:with ((~literal #%plain-lambda) tvs+
+               (~let*-syntax
+                ((~literal #%expression)
+                 ((~literal #%plain-lambda) xs+
+                  (~let*-syntax
+                   ((~literal #%expression) e+) ... (~literal void))))))
+       (expa
+        #`(λ (tv ...)
+            (let*-syntax ([tv (make-rename-transformer
+                               (mk-tyvar
+                                (attachs #'tv '(tvsep ...) #'(tvk ...))))] ...)
+              (λ (x ...)
+                (let*-syntax ([x v-stx] ...)
+                  (#%expression e) ... void)))))
+       (list #'tvs+
+             #'xs+
+             #'(e+ ...)
+             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
+
+
 
   ;; fns derived from infer ---------------------------------------------------
   ;; some are syntactic shortcuts, some are for backwards compat
