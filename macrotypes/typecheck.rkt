@@ -1004,7 +1004,7 @@
             (let*-syntax ([tv (make-rename-transformer ; TODO: make this an argument too?
                                (mk-tyvar
                                 (attachs #'tv '(tvsep ...) #'(tvk ...)
-                                         #:kev #,kev)))] ...)
+                                         #:ev #,kev)))] ...)
               (λ (X ... x ...)
                 (let*-syntax ([X X-stx] ...
                               [x x-stx] ...)
