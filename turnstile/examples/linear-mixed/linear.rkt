@@ -23,6 +23,7 @@
          let let* if lambda
          (rename-out [lambda λ]))
 
+(require "new-infer.rkt")
 
 
 (begin-for-syntax
@@ -34,50 +35,6 @@
            ;make-linear-var-transformer
            ;infer/branch
            )
-
-  ; more generic version of built-in (infer ...) function
-  ; takes #:var-stx (vs ...), a list of syntax objects to use
-  ; to expand the variables.
-  ; => (xs- es- τs)
-  (define (new-infer es
-                     #:tvctx [tvctx '()]
-                     #:ctx [ctx '()]
-                     #:tag [tag (current-tag)]
-                     #:var-stx
-                     [var-stxs
-                      (syntax-parse ctx
-                        [([x:id (~seq sep:id τ) ...] ...)
-                         #'((make-variable-like-transformer
-                             (attachs #'x '(sep ...) #'(τ ...))) ...)])])
-    (syntax-parse ctx
-      [([x:id sep:id τ] ...)
-       #:with (~or ([tv (~seq tvsep:id tvk) ...] ...)
-                   (~and (tv:id ...)
-                         (~parse ([(tvsep ...) (tvk ...)] ...)
-                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...)))))
-                   tvctx
-       #:with (e ...) es
-       #:with (v-stx ...) var-stxs
-       #:with ((~literal #%plain-lambda) tvs+
-               (~let*-syntax
-                ((~literal #%expression)
-                 ((~literal #%plain-lambda) xs+
-                  (~let*-syntax
-                   ((~literal #%expression) e+) ... (~literal void))))))
-       (expand/df
-        #`(λ (tv ...)
-            (let*-syntax ([tv (make-rename-transformer
-                               (mk-tyvar
-                                (attachs #'tv '(tvsep ...) #'(tvk ...))))] ...)
-              (λ (x ...)
-                (let*-syntax ([x v-stx] ...)
-                  (#%expression e) ... void)))))
-       (list #'tvs+
-             #'xs+
-             #'(e+ ...)
-             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
-
-
 
   ; is the type a type whose values can only be bound once?
   ; e.g. all linear types except lump type (!! x)
@@ -137,18 +94,24 @@
          [_ (re-apply this-syntax)])]))
 
 
-  ; evaluates the body but raises an exception if any newly introduced variables
-  ; were not unused
-  (define-syntax with-linear-vars-checked
-    (syntax-parser
-      [(_ body ...+)
-       #'(let ([ulv-before unused-lin-vars])
-           (begin0 (begin body ...)
-             (for ([v (in-set (set-subtract unused-lin-vars ulv-before))])
-               (raise-syntax-error #f
-                                   "linear variable unused"
-                                   v))))]))
 
+  ; this stack is used by let, let* and λ to keep track of which
+  ; variables were used before going out of scope
+
+  (define unused-vars-stack '())
+
+  ; push the current set of linear variables
+  (define (push-linear-vars)
+    (set! unused-vars-stack (cons unused-lin-vars unused-vars-stack)))
+
+  ; pop the last set of linear variables, and throw errors for any variable
+  ; still in the current set that wasn't in scope in the previous set
+  (define (pop-linear-vars [err
+                            (λ (v)
+                              (raise-syntax-error #f "linear variable unused" v))])
+    (let ([prev (car unused-vars-stack)])
+      (set! unused-vars-stack (cdr unused-vars-stack))
+      (set-for-each (set-subtract unused-lin-vars prev) err)))
 
 
   ; infer the type of every expression in es, but expect the linear variable
@@ -223,12 +186,12 @@
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
-   ; [[x ≫ x- : σ] ⊢ e ≫ e- ⇒ σ_out]
+   #:do [(push-linear-vars)]
    #:with (_ (x- ...) (e-) (σ_out))
-   (with-linear-vars-checked
-     (new-infer #'{e}
-                #:ctx #'([x : σ] ...)
-                #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...}))
+   (new-infer #'{e}
+              #:ctx #'[(x : σ) ...]
+              #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})
+   #:do [(pop-linear-vars)]
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
 
@@ -242,12 +205,12 @@
 
    #:fail-unless (stx-length=? #'(σ ...) #'(x ...)) "wrong number of elements in tuple"
 
-   ; [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
+   #:do [(push-linear-vars)]
    #:with (_ (x- ...) (e-) (σ_out))
-   (with-linear-vars-checked
-     (new-infer #'{(let* vars e)}
-                #:ctx #'([x : σ] ...)
-                #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...}))
+   (new-infer #'{(let* vars e)}
+              #:ctx #'([x : σ] ...)
+              #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})
+   #:do [(pop-linear-vars)]
 
    --------
    [⊢ (-delist (x- ...) rhs- e-) ⇒ σ_out]]
@@ -274,11 +237,12 @@
 (define-typed-syntax lambda
   [(_ ([x:id (~datum :) ty:type] ...) body) ≫
    ; [[x ≫ x- : ty] ⊢ body ≫ body- ⇒ σ_out]
+   #:do [(push-linear-vars)]
    #:with (_ (x- ...) (body-) (σ_out))
-   (with-linear-vars-checked
-     (new-infer #'{body}
-                #:ctx #'([x : σ] ...)
-                #:var-stx #'{(make-linear-variable-transformer #'x ': #'ty) ...}))
+   (new-infer #'{body}
+              #:ctx #'([x : σ] ...)
+              #:var-stx #'{(make-linear-variable-transformer #'x ': #'ty) ...})
+   #:do [(pop-linear-vars)]
    --------
    [⊢ (λ- (x- ...) body-) ⇒ (-o ty.norm ... σ_out)]])
 
