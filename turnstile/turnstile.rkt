@@ -101,17 +101,6 @@
                         #:ctx ctx
                         #:exprs es
                         #:tag tag)
-
-    (printf (string-append "infer/depths\n"
-                           "depths: ctx: ~a / exprs: ~a\n"
-                           "ctx:   ~a\n"
-                           "vars:  ~a\n"
-                           "exprs: ~a\n\n")
-            ctx-deps es-deps
-            (syntax->datum ctx)
-            (syntax->datum vars)
-            (syntax->datum es))
-
     (syntax-parse (infer (stx-flat/depths es-deps es)
                          #:ctx (stx-flat/depths ctx-deps ctx)
                          #:var-stx (stx-flat/depths ctx-deps vars)
