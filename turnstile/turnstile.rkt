@@ -181,8 +181,8 @@
   (define-syntax-class ⇒-prop
     #:attributes (e-pat) ; e-pat = pattern to apply to expression containing property
     #:datum-literals (⇒)
-    [pattern (~or (~and (⇒ tag prop-pat inner:⇒-prop ...))
-                  (~and (⇒     prop-pat inner:⇒-prop ...) (~parse tag #',(current-tag))))
+    [pattern (~or (~and (⇒ tag:id prop-pat inner:⇒-prop ...))
+                  (~and (⇒        prop-pat inner:⇒-prop ...) (~parse tag #',(current-tag))))
              #:with e-tmp (generate-temporary)
              #:with e-pat
              #'(~and e-tmp
@@ -192,8 +192,8 @@
   (define-syntax-class ⇐-prop
     #:attributes (type e-pat)
     #:datum-literals (⇐)
-    [pattern (~or (~and (⇐ tag type))
-                  (~and (⇐     type) (~parse tag #',(current-tag))))
+    [pattern (~or (~and (⇐ tag:id type))
+                  (~and (⇐        type) (~parse tag #',(current-tag))))
              #:with e-tmp (generate-temporary)
              #:with τ-exp (generate-temporary)
              #:with τ-tmp (generate-temporary)
