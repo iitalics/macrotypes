@@ -228,10 +228,10 @@
   (define-syntax-class ctx-elem
     #:attributes (var-stx x+props pat)
     #:datum-literals (≫)
-    [pattern [x:id ≫ ~! pat k v]
-             #:with var-stx #'(VAR x k v)
-             #:with x+props #'(x k v)]
-    #;[pattern [mac:id x:id ≫ ~! pat . props:kv-props]
+    [pattern [x:id ≫ ~! pat . props:kv-props]
+             #:with var-stx #'(VAR x . props)
+             #:with x+props #'(x . props)]
+    [pattern [mac:id x:id ≫ ~! pat . props:kv-props]
              #:with var-stx #'(mac x . props)
              #:with x+props #'(x . props)]
     [pattern (~and X:id (~not (~var _ elipsis)))
