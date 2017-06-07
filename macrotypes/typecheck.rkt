@@ -952,7 +952,7 @@
                                (mk-tyvar
                                 (attachs #'tv '(tvsep ...) #'(tvk ...)
                                          #:ev #,kev)))] ...)
-              (λ (X ... x ...)
+              (λ (X ... x ...) ; TODO: don't do this; try to retain the shape of the input context
                 (let*-syntax ([X X-stx] ...
                               [x x-stx] ...)
                   (#%expression e) ... void)))))
@@ -978,6 +978,21 @@
                    (mk-tyvar (attach #'X ':: (#,kev #'#%type))))])
              ctx))
 
+  ; variable syntax for regular typed variables
+  (define-syntax (VAR stx)
+    (syntax-case stx ()
+      [(_ x tag ty)
+       #`(make-variable-like-transformer
+          (attach #`x `tag #`ty))]))
+
+  ; variable syntax for regular kinded type variables
+  (define-syntax (TYVAR stx)
+    (syntax-case stx ()
+      [(_ x)
+       #`(make-variable-like-transformer
+          (mk-tyvar (attach #'x ':: ((current-type-eval) #'#%type))))]))
+
+  
 
   ;; fns derived from infer ---------------------------------------------------
   ;; some are syntactic shortcuts, some are for backwards compat
