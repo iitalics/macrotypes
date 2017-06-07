@@ -23,7 +23,7 @@
          let let* if lambda
          (rename-out [lambda λ]))
 
-(require "new-infer.rkt")
+(require (for-syntax "new-infer.rkt"))
 
 
 (begin-for-syntax
@@ -92,6 +92,11 @@
        (syntax-parser
          [:id (attach x tag ty)]
          [_ (re-apply this-syntax)])]))
+
+  (define-syntax (LINEAR stx)
+    (syntax-case stx ()
+      [(_ x tag ty)
+       #'(make-linear-variable-transformer #'x 'tag #'ty)]))
 
 
 
@@ -182,15 +187,12 @@
             (#%app- list- tmp (#%app- unsafe-unbox tmp)))
       ⇒ (⊗ Loc σ)]])
 
-
 (define-typed-syntax let
   [(_ ([x:id rhs] ...) e) ≫
    [⊢ rhs ≫ rhs- ⇒ σ] ...
    #:do [(push-linear-vars)]
-   #:with (_ (x- ...) (e-) (σ_out))
-   (new-infer #'{e}
-              #:ctx #'[(x : σ) ...]
-              #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})
+   #:with ((~new-typecheck
+            [[LINEAR x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out])) '()
    #:do [(pop-linear-vars)]
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
@@ -206,10 +208,8 @@
    #:fail-unless (stx-length=? #'(σ ...) #'(x ...)) "wrong number of elements in tuple"
 
    #:do [(push-linear-vars)]
-   #:with (_ (x- ...) (e-) (σ_out))
-   (new-infer #'{(let* vars e)}
-              #:ctx #'([x : σ] ...)
-              #:var-stx #'{(make-linear-variable-transformer #'x ': #'σ) ...})
+   #:with ((~new-typecheck
+            [[LINEAR x ≫ x- : σ] ... ⊢ (let* vars e) ≫ e- ⇒ σ_out])) '()
    #:do [(pop-linear-vars)]
 
    --------
@@ -238,10 +238,8 @@
   [(_ ([x:id (~datum :) ty:type] ...) body) ≫
    ; [[x ≫ x- : ty] ⊢ body ≫ body- ⇒ σ_out]
    #:do [(push-linear-vars)]
-   #:with (_ (x- ...) (body-) (σ_out))
-   (new-infer #'{body}
-              #:ctx #'([x : σ] ...)
-              #:var-stx #'{(make-linear-variable-transformer #'x ': #'ty) ...})
+   #:with ((~new-typecheck
+            [[LINEAR x ≫ x- : ty] ... ⊢ body ≫ body- ⇒ σ_out])) '()
    #:do [(pop-linear-vars)]
    --------
    [⊢ (λ- (x- ...) body-) ⇒ (-o ty.norm ... σ_out)]])
