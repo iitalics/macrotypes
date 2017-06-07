@@ -66,7 +66,7 @@
     (define (flat d stx)
       (cond
         [(zero? d) (list stx)]
-        [(null? stx) '()]
+        [(stx-null? stx) '()]
         [else
          (append (flat (sub1 d) (stx-car stx))
                  (flat d        (stx-cdr stx)))]))
@@ -81,12 +81,12 @@
     (define (unflat d orig)
       (cond
         [(zero? d) (next)]
-        [(null? orig) orig]
+        [(stx-null? orig) orig]
         [else
-         (datum->syntax orig
+         (datum->syntax (if (syntax? orig) orig #f)
           (cons (unflat (sub1 d) (stx-car orig))
                 (unflat d        (stx-cdr orig))))]))
-    (datum->syntax origs
+    (datum->syntax (if (syntax? origs) origs #f)
      (stx-map unflat ds origs)))
 
 
@@ -101,6 +101,17 @@
                         #:ctx ctx
                         #:exprs es
                         #:tag tag)
+#;
+    (printf (string-append "infer/depths\n"
+                           "depths: ctx: ~a / exprs: ~a\n"
+                           "ctx:   ~a\n"
+                           "vars:  ~a\n"
+                           "exprs: ~a\n\n")
+            ctx-deps es-deps
+            (syntax->datum ctx)
+            (syntax->datum vars)
+            (syntax->datum es))
+    
     (syntax-parse (infer (stx-flat/depths es-deps es)
                          #:ctx (stx-flat/depths ctx-deps ctx)
                          #:var-stx (stx-flat/depths ctx-deps vars)
@@ -199,29 +210,33 @@
              
 
   ;; clause for the entire context (lhs of ⊢)
-  (define-splicing-syntax-class tc-context
+  (define-syntax-class tc-context
     #:attributes ([deps 1] vars ctx pat)
     ; consequative context elems
-    [pattern (~seq (~seq ce:ctx-elem ooo:elipsis ...) ...)
+    [pattern [(~seq ce:ctx-elem ~! ooo:elipsis ...) ...]
              #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
              #:with vars (stx-map with-depth #'(ce.var-stx ...) #'([ooo ...] ...))
              #:with ctx  (stx-map with-depth #'(ce.x+props ...) #'([ooo ...] ...))
              #:with pat  (stx-map with-depth #'(ce.pat ...)     #'([ooo ...] ...))]
-    ; TODO: grouped elems
+    [pattern [c1:tc-context . c2:tc-context]
+             #:with (deps ...) #'(c1.deps ... c2.deps ...)
+             #:with vars (append (stx->list #'c1.vars) (stx->list #'c2.vars))
+             #:with ctx  (append (stx->list #'c1.ctx) (stx->list #'c2.ctx))
+             #:with pat  (append (stx->list #'c1.pat) (stx->list #'c2.pat))]
     )
 
   (define-syntax-class ctx-elem
     #:attributes (var-stx x+props pat)
     #:datum-literals (≫)
-    [pattern [x:id ≫ pat . props:kv-props]
-             #:with var-stx #'(VAR x . props)
-             #:with x+props #'(x . props)]
-    [pattern [mac:id x:id ≫ pat . props:kv-props]
+    [pattern [x:id ≫ ~! pat k v]
+             #:with var-stx #'(VAR x k v)
+             #:with x+props #'(x k v)]
+    #;[pattern [mac:id x:id ≫ ~! pat . props:kv-props]
              #:with var-stx #'(mac x . props)
              #:with x+props #'(x . props)]
-    [pattern (~and X:id (~not :elipsis))
+    [pattern (~and X:id (~not (~var _ elipsis)))
              #:with var-stx #'(TYVAR X)
-             #:with x+props #'(x)
+             #:with x+props #'(X)
              #:with pat #'_])
 
   
@@ -242,6 +257,7 @@
   ;; single type clause ( e ≫ e- ...)
   (define-syntax-class tc
     #:attributes (tem pat)
+    #:datum-literals (≫)
     ; synthesis (match the output type)
     [pattern [tem ≫ expa . out:⇒-prop]
              #:with pat #'(~and expa out.e-pat)]
@@ -263,7 +279,9 @@
   (define-splicing-syntax-class tc-clause
     #:attributes (pat)
     #:datum-literals (⊢)
-    [pattern (~seq [ctx:tc-context ⊢ ~! . rhs:tcs] ooo:elipsis ...)
+    [pattern (~seq [l ... ⊢ ~! r ...] ooo:elipsis ...)
+             #:with ctx:tc-context #'[l ...]
+             #:with rhs:tcs #'[r ...]
              #:with dep (stx-length #'[ooo ...])
              #:with vars/ctx/es (with-depth #'(ctx.vars ctx.ctx rhs.es) #'[ooo ...])
              #:with xs/es-pats  (with-depth #'(ctx.pat rhs.pat) #'[ooo ...])
@@ -526,3 +544,10 @@
                                [current-tag 'key1])
                   (syntax-parse/typecheck stx kw-stuff (... ...)
                     rule (... ...))))])))]))
+
+#;
+(define-typed-syntax blah
+  [(_ (x ...) (y ...)) ≫
+   [[x ≫ x- :: #%type] ... ⊢ [y ≫ y- ⇐ :: #%type] ...]
+   --------
+   [≻ 'ok]])
