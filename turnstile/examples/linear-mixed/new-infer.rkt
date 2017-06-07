@@ -1,12 +1,16 @@
-#lang racket/base
-(require turnstile)
+#lang racket
+(require turnstile
+         syntax/parse)
 
-(begin-for-syntax
-  (require racket
-           (for-syntax syntax/parse))
-  (provide new-infer)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(module new-infer turnstile
+  (require (for-syntax
+            syntax/parse
+            syntax/stx))
+  (provide (for-syntax (all-defined-out)))
 
+  (begin-for-syntax
   (define (new-infer es
                  #:tvctx [tvctx '()]
                  #:ctx [ctx '()]
@@ -63,8 +67,216 @@
                    (mk-tyvar (attach #'X ':: (#,kev #'#%type))))])
              ctx))
 
+  (define-syntax DEFAULT-VAR
+    (syntax-parser
+      [(_ x (~seq tag prop) ...)
+       #'(make-variable-like-transformer
+          (attachs #'x '(tag ...) #'(prop ...)))]))
+
+  (define-syntax DEFAULT-TYPEVAR
+    (syntax-parser
+      [(_ x)
+       #'(make-variable-like-transformer
+          (mk-tyvar (attach #'x ':: ((current-type-eval) #'#%type))))]))
+  ))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(module stx-classes racket
+  (require macrotypes/stx-utils
+           racket/syntax
+           syntax/parse
+           syntax/stx)
+  (provide (all-defined-out))
+
+  (define-syntax-class dots
+    (pattern (~datum ...)))
+
+  ;; nest stx, suffixed with every element in ooos
+  ;; e.g.
+  ;;   (nest #'x #'(aaa bbb ccc)) = #'(((x aaa) bbb) ccc)
+  (define (nested stx ooos)
+    (cond
+      [(stx-null? ooos) stx]
+      [else (nested (datum->syntax stx (list stx (stx-car ooos)))
+                    (stx-cdr ooos))]))
+
+
+  ;;; premise
+  (define-splicing-syntax-class ts/premise
+    #:datum-literals (⊢)
+    (pattern (~seq [a ... ⊢ ~! b ...] ooo:dots ...)
+             #:with ctx:ts/ctx #'[a ...]
+             #:with tc:ts/tc #'[b ...]
+             #:with dep (stx-length #'[ooo ...])
+             #:with t-v/c/es (nested #'(ctx.t-vars ctx.t-ctx tc.t-es)
+                                     #'[ooo ...])
+             #:with p-xs/es (nested #'(ctx.pat tc.pat)
+                                    #'[ooo ...])
+             #:with pat
+             #`(~post
+                (~post
+                 (~parse
+                  p-xs/es (new-infers/depths #`t-v/c/es
+                                             'dep
+                                             '(ctx.deps ...)
+                                             '(tc.deps ...)))))))
+
+
+  ;;; context
+  (define-syntax-class ts/ctx
+    #:attributes ([deps 1] t-vars t-ctx pat)
+    (pattern [(~seq elem:ts/ctx-elem ooo:dots ...) ...]
+             #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
+             #:with t-ctx  (stx-map nested
+                                    #'(elem.t-ctx-elem ...)
+                                    #'([ooo ...] ...))
+             #:with t-vars (stx-map nested
+                                    #'(elem.t-var-stx ...)
+                                    #'([ooo ...] ...))
+             #:with pat    (stx-map nested
+                                    #'(elem.pat ...)
+                                    #'([ooo ...] ...))))
+
+  (define-syntax-class ts/ctx-elem
+    #:datum-literals (≫)
+    #:attributes (t-ctx-elem t-var-stx pat)
+    (pattern [var-mac:id t-x ≫ pat . (~and props [(~seq tag prop) ...])]
+             #:with t-ctx-elem #'(t-x . props)
+             #:with t-var-stx #'(var-mac t-x . props))
+    (pattern [t-x ≫ pat . (~and props [(~seq tag prop) ...])]
+             #:with t-ctx-elem #'(t-x . props)
+             #:with t-var-stx #'(DEFAULT-VAR t-x . props)))
+
+
+  ;;; typing clause
+  (define-syntax-class ts/tc
+    #:attributes ([deps 1] t-es pat)
+    (pattern [(~seq elem:ts/tc-elem ooo:dots ...) ...]
+             #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
+             #:with t-es (stx-map nested
+                                  #'(elem.templ ...)
+                                  #'([ooo ...] ...))
+             #:with pat  (stx-map nested
+                                  #'(elem.pat ...)
+                                  #'([ooo ...] ...))))
+
+  (define-syntax-class ts/tc-elem
+    #:datum-literals (≫ ⇒ ⇐)
+    #:attributes (templ pat)
+    (pattern [t-expr ≫ p-expa (⇒ tag p-prop) ...]
+             #:with tags #'(tag ...)
+             #:with tmp (generate-temporary #'p-expa)
+             #:with templ #'t-expr
+             #:with pat #'(~and tmp
+                                p-expa
+                                (~parse p-prop
+                                        (detach #'tmp `tag)) ...))
+    (pattern [t-expr ≫ p-expa ⇐ t-type]
+             #:with templ #'(add-expected t-expr t-type)
+             #:with pat #'p-expa))
 
   )
+
+
+
+(module new-infer/depth racket
+  (require syntax/parse
+           syntax/stx)
+  (provide (all-defined-out))
+
+  ;; append two syntax lists together
+  ;; (stx-append #'(x ...) #'(y ...)) = #'(x ... y ...)
+  ; stx-append : (listof stx-elem) (listof stx-elem) -> (listof stx-elem)
+  (define (stx-append xs ys)
+    (append (stx->list xs)
+            (stx->list ys)))
+
+  ;; flatten a list of trees (with fixed depth per tree given by each element of
+  ;; the depths list) into a single list
+  ; stx-flats : (listof depth) (listof stx-tree) -> (listof stx-elem)
+  (define (stx-flats ds ts)
+    (define (flat d t)
+      (cond
+        [(stx-null? t) t]
+        [(zero? d) (list t)]
+        [else
+         (stx-append (flat (sub1 d) (stx-car t))
+                     (flat d        (stx-cdr t)))]))
+    (with-syntax ([((x ...) ...) (stx-map flat ds ts)])
+      #'[x ... ...]))
+
+  ;; unflatten a list back into a list of trees, as if the list is a flattened version
+  ;; of the tree (per stx-flats).
+  ;; this is useful as a "delayed-map", where we need the tree as a list to easily map,
+  ;; but then we need it back in tree-form for e.g. pattern matching with ellipsis
+  ; stx-unflats : (listof depth) (listof stx-tree) (listof stx-elem) -> (listof stx-tree)
+  (define (stx-unflats ds orig lst)
+    (define (next)
+      (begin0 (stx-car lst)
+        (set! lst (stx-cdr lst))))
+    (define (unflat d t)
+      (cond
+        [(stx-null? t) t]
+        [(zero? d) (next)]
+        [else
+         (cons (unflat (sub1 d) (stx-car t))
+               (unflat d        (stx-cdr t)))]))
+    (stx-map unflat ds orig))
+
+  ;; map a tree shaped syntax that has a fixed depth d.
+  ;; e.g. (stx-map/depth e id->upper #'(((a) (b c)) (() (d)))) = #'(((A) (B C)) (() (D)))
+  (define (stx-map/depth d f stx)
+    (cond
+      [(zero? d) (f stx)]
+      [(stx-null? stx) stx]
+      [else
+       (cons (stx-map/depth (sub1 d) f (stx-car stx))
+             (stx-map/depth d        f (stx-cdr stx)))]))
+
+
+  ;; for testing:
+  (define (fake-infer es #:ctx ctx #:var-stx var-stxs)
+    (define (stx->datum s)
+      (syntax->datum (datum->syntax #f s)))
+    (printf (string-append "es:       ~a\n"
+                           "ctx:      ~a\n"
+                           "var-stxs: ~a\n")
+            (stx->datum es)
+            (stx->datum ctx)
+            (stx->datum var-stxs))
+    (list '()
+          (map (syntax-parser
+                 [(x . _) #'x])
+               ctx)
+          es
+          '()))
+
+  (define (new-infer/depths vars/ctx/es
+                            ctx-deps
+                            es-deps)
+    (syntax-parse vars/ctx/es
+      [(vars ctx es)
+       #:with (_ xs+/flat es+/flat _)
+       (fake-infer (stx-flats es-deps #'es)
+                   #:ctx (stx-flats ctx-deps #'ctx)
+                   #:var-stx (stx-flats ctx-deps #'vars))
+       (list (stx-unflats ctx-deps #'ctx #'xs+/flat)
+             (stx-unflats es-deps #'es #'es+/flat))]))
+
+  (define (new-infers/depths v/c/es
+                             depth
+                             ctx-deps
+                             es-deps)
+    (stx-map/depth depth
+                   (λ (v/c/e)
+                     (new-infer/depths v/c/e
+                                       ctx-deps
+                                       es-deps))
+                   v/c/es))
+
+  )
+
+(require 'new-infer)
+(provide (for-syntax new-infer))
