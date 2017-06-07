@@ -204,6 +204,8 @@
              #:with ctx:ts/ctx #'[a ...]
              #:with tc:ts/tc #'[b ...]
              #:with dep (stx-length #'[ooo ...])
+             ; note: t- prefix means "template"
+             ;       p- prefix means "pattern"
              #:with t-v/c/es (nested #'(ctx.t-vars ctx.t-ctx tc.t-es)
                                      #'[ooo ...])
              #:with p-xs/es (nested #'(ctx.pat tc.pat)
@@ -221,7 +223,20 @@
   ;;; context
   (define-syntax-class ts/ctx
     #:attributes ([deps 1] t-vars t-ctx pat)
+    ; basically grouped contexts, but grouping is automatic
     (pattern [(~seq elem:ts/ctx-elem ooo:dots ...) ...]
+             #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
+             #:with t-ctx  (stx-map nested
+                                    #'(elem.t-ctx-elem ...)
+                                    #'([ooo ...] ...))
+             #:with t-vars (stx-map nested
+                                    #'(elem.t-var-stx ...)
+                                    #'([ooo ...] ...))
+             #:with pat    (stx-map nested
+                                    #'(elem.pat ...)
+                                    #'([ooo ...] ...)))
+    ; (grouped) contexts
+    (pattern [(elem:ts/ctx-elem ooo:dots ...) ...]
              #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
              #:with t-ctx  (stx-map nested
                                     #'(elem.t-ctx-elem ...)
@@ -236,12 +251,15 @@
   (define-syntax-class ts/ctx-elem
     #:datum-literals (≫)
     #:attributes (t-ctx-elem t-var-stx pat)
-    (pattern [var-mac:id t-x ≫ pat . (~and props [(~seq tag prop) ...])]
+    ; custom variable syntax, e.g. [LINEAR x ≫ x- : t]
+    (pattern [var-mac:id t-x:id ≫ pat . (~and props [(~seq tag prop) ...])]
              #:with t-ctx-elem #'(t-x . props)
              #:with t-var-stx #'(var-mac t-x . props))
-    (pattern [t-x ≫ pat . (~and props [(~seq tag prop) ...])]
+    ; normal variable [x ≫ x- : t]
+    (pattern [t-x:id ≫ pat . (~and props [(~seq tag prop) ...])]
              #:with t-ctx-elem #'(t-x . props)
              #:with t-var-stx #'(DEFAULT-VAR t-x . props))
+    ; type variable X
     (pattern X:id
              #:with t-ctx-elem #'X
              #:with t-var-stx #'(DEFAULT-TYVAR X)
@@ -267,17 +285,20 @@
   (define-syntax-class ts/tc-elem
     #:datum-literals (≫ ⇒ ⇐)
     #:attributes (templ pat)
-    (pattern [t-expr ≫ p-expa (⇒ tag p-prop) ...]
-             #:with tags #'(tag ...)
+    ; TODO: modularize?
+    (pattern [templ ≫ p-expa (⇒ tag p-prop) ...]
              #:with tmp (generate-temporary #'p-expa)
-             #:with templ #'t-expr
              #:with pat #'(~and tmp
                                 p-expa
                                 (~parse p-prop
                                         (detach #'tmp `tag)) ...))
-    (pattern [t-expr ≫ p-expa ⇒ p-type]
+    (pattern [templ ≫ p-expa ⇒ tag p-prop]
              #:with tmp (generate-temporary #'p-expa)
-             #:with templ #'t-expr
+             #:with pat #'(~and tmp
+                                p-expa
+                                (~parse p-prop (detach #'tmp `tag))))
+    (pattern [templ ≫ p-expa ⇒ p-type]
+             #:with tmp (generate-temporary #'p-expa)
              #:with pat #`(~and tmp
                                 p-expa
                                 (~parse p-type (detach #'tmp ':))))
