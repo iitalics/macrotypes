@@ -980,7 +980,8 @@
     (syntax-parser
       [(_ x (~seq tag prop) ...)
        #`(make-variable-like-transformer
-          (attachs #'x '(tag ...) #'(prop ...)
+          (attachs (attach #'x 'orig-binding #'x)
+                   '(tag ...) #'(prop ...)
                    #:ev (current-type-eval)))]))
 
   ; variable syntax for regular kinded type variables
