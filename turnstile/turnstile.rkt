@@ -112,7 +112,7 @@
        (list (stx-unflatten/depths ctx-deps ctx #'xs+)
              (stx-unflatten/depths es-deps es #'es+))]))
 
-  ; invokes (infer ...) many times, for each var/ctx/expr/orig pair in the
+  ; invokes (infer ...) many times, for each var/ctx/expr/orig group in the
   ; given structure (with given depth = dep). retains the shape but transforms
   ; each leaf into (xs- es-), per the behavior of infer/depths function
   (define (infers/depths dep
@@ -168,7 +168,7 @@
                        (stx-cdr elipses))]))
 
 
-  (define-syntax-class kv-props
+  (define-syntax-class props
     [pattern [(~seq tag:id prop) ...]])
 
   (define-syntax-class ⇒-prop
@@ -205,33 +205,35 @@
   ;; clause for the entire context (lhs of ⊢)
   (define-syntax-class tc-context
     #:attributes ([deps 1] vars ctx pat)
-    ; consequative context elems
+    ; consecutive context elems
     [pattern [(~seq ce:ctx-elem ~! ooo:elipsis ...) ...]
              #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
              #:with vars (stx-map with-depth #'(ce.var-stx ...) #'([ooo ...] ...))
              #:with ctx  (stx-map with-depth #'(ce.x+props ...) #'([ooo ...] ...))
              #:with pat  (stx-map with-depth #'(ce.pat ...)     #'([ooo ...] ...))]
+    ; nested contexts (in parenthesis, e.g. [(X Y) [x ≫ x- : t] ... ⊢ ...]
     [pattern [c1:tc-context . c2:tc-context]
              #:with (deps ...) #'(c1.deps ... c2.deps ...)
              #:with vars (append (stx->list #'c1.vars) (stx->list #'c2.vars))
              #:with ctx  (append (stx->list #'c1.ctx) (stx->list #'c2.ctx))
-             #:with pat  (append (stx->list #'c1.pat) (stx->list #'c2.pat))]
-    )
+             #:with pat  (append (stx->list #'c1.pat) (stx->list #'c2.pat))])
 
+  ;; single context element; variable [x ≫ x-] or type variable X
+  ;; new syntax: [MACRO x ≫ x-] allos the variable transformer to
+  ;; be overriden. in fact, X is just syntax sugar for [TYVAR X ≫ _]
   (define-syntax-class ctx-elem
     #:attributes (var-stx x+props pat)
     #:datum-literals (≫)
-    [pattern [x:id ≫ ~! pat . props:kv-props]
+    [pattern [x:id ≫ ~! pat . props:props]
              #:with var-stx #'(VAR x . props)
              #:with x+props #'(x . props)]
-    [pattern [mac:id x:id ≫ ~! pat . props:kv-props]
+    [pattern [mac:id x:id ≫ ~! pat . props:props]
              #:with var-stx #'(mac x . props)
              #:with x+props #'(x . props)]
     [pattern (~and X:id (~not (~var _ elipsis)))
              #:with var-stx #'(TYVAR X)
-             #:with x+props #'(X)
+             #:with x+props #'X
              #:with pat #'_])
-
 
   ;; type clauses under a context (rhs of ⊢)
   (define-syntax-class tcs
@@ -276,11 +278,8 @@
   (define-splicing-syntax-class tc-clause
     #:attributes (pat)
     #:datum-literals (⊢)
-    [pattern (~seq [l ... ⊢ ~! r ...] ooo:elipsis ...)
-             ; this WORKS, but l... and r... cause confusing syntax errors
-             ; however, making tc-context splicing is not easy
+    [pattern (~seq [l ... ⊢ ~! . rhs:tcs] ooo:elipsis ...)
              #:with lhs:tc-context #'[l ...]
-             #:with rhs:tcs        #'[r ...]
              #:with dep (stx-length #'[ooo ...])
              #:with vars/ctx/es/origs
              (with-depth #'(lhs.vars lhs.ctx rhs.es rhs.origs) #'[ooo ...])
