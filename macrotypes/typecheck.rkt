@@ -964,33 +964,27 @@
   (define (var-transformers-for-context ctx tag tev kev)
     (stx-map (syntax-parser
                ; missing seperator
-               [[x:id τ] 
-                #`(make-variable-like-transformer
-                   (attach #'x '#,tag (#,tev #'τ)))]
+               [[x:id τ] #'(VAR x : τ)]
                ; seperators given
-               [[x:id (~seq sep:id τ) ...]
-                #`(make-variable-like-transformer
-                   (attachs #'x '(sep ...) #'(τ ...)
-                            #:ev #,tev))]
+               [[x:id . props] #'(VAR x . props)]
                ; just variable; interpreted as type variable
-               [X:id
-                #`(make-variable-like-transformer
-                   (mk-tyvar (attach #'X ':: (#,kev #'#%type))))])
+               [X:id #'(TYVAR X)])
              ctx))
 
   ; variable syntax for regular typed variables
-  (define-syntax (VAR stx)
-    (syntax-case stx ()
-      [(_ x tag ty)
+  (define-syntax VAR
+    (syntax-parser
+      [(_ x (~seq tag prop) ...)
        #`(make-variable-like-transformer
-          (attach #`x `tag #`ty))]))
+          (attachs #'x '(tag ...) #'(prop ...)
+                   #:ev (current-type-eval)))]))
 
   ; variable syntax for regular kinded type variables
-  (define-syntax (TYVAR stx)
-    (syntax-case stx ()
-      [(_ x)
+  (define-syntax TYVAR
+    (syntax-parser
+      [(_ X)
        #`(make-variable-like-transformer
-          (mk-tyvar (attach #'x ':: ((current-type-eval) #'#%type))))]))
+          (mk-tyvar (attach #'X ':: ((current-type-eval) #'#%type))))]))
 
   
 
