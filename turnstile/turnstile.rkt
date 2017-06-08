@@ -100,19 +100,11 @@
                         #:vars vars
                         #:ctx ctx
                         #:exprs es
+                        #:origs origs
                         #:tag tag)
-#;
-    (printf (string-append "infer/depths\n"
-                           "depths: ctx: ~a / exprs: ~a\n"
-                           "ctx:   ~a\n"
-                           "vars:  ~a\n"
-                           "exprs: ~a\n\n")
-            ctx-deps es-deps
-            (syntax->datum ctx)
-            (syntax->datum vars)
-            (syntax->datum es))
-    
-    (syntax-parse (infer (stx-flat/depths es-deps es)
+    (syntax-parse (infer (stx-map pass-orig
+                                  (stx-flat/depths es-deps es)
+                                  (stx-flat/depths es-deps origs))
                          #:ctx (stx-flat/depths ctx-deps ctx)
                          #:var-stx (stx-flat/depths ctx-deps vars)
                          #:tag tag)
@@ -120,22 +112,23 @@
        (list (stx-unflatten/depths ctx-deps ctx #'xs+)
              (stx-unflatten/depths es-deps es #'es+))]))
 
-  ; invokes (infer ...) many times, for each var/ctx/expr pair in the
+  ; invokes (infer ...) many times, for each var/ctx/expr/orig pair in the
   ; given structure (with given depth = dep). retains the shape but transforms
   ; each leaf into (xs- es-), per the behavior of infer/depths function
   (define (infers/depths dep
                          ctx-deps es-deps
-                         v/c/es
+                         v/c/e/os
                          #:tag tag)
     (stx-map/depth dep
                    (syntax-parser
-                     [(vars ctx es)
+                     [(vars ctx es origs)
                       (infer/depths ctx-deps es-deps
                                     #:vars #'vars
                                     #:ctx #'ctx
                                     #:exprs #'es
+                                    #:origs #'origs
                                     #:tag tag)])
-                   v/c/es))
+                   v/c/e/os))
 
   (define (raise-⇐-expected-type-error ⇐-stx body expected-type existing-type)
     (raise-syntax-error
@@ -239,37 +232,41 @@
              #:with x+props #'(X)
              #:with pat #'_])
 
-  
+
   ;; type clauses under a context (rhs of ⊢)
   (define-syntax-class tcs
-    #:attributes ([deps 1] es pat)
+    #:attributes ([deps 1] es origs pat)
     ; multiple clauses, e.g. [... ⊢ [e1 ≫ e1-] [e2 ≫ e2-]]
     [pattern [(~seq tc:tc ooo:elipsis ...) ...]
              #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
-             #:with es  (stx-map with-depth #'(tc.tem ...) #'([ooo ...] ...))
-             #:with pat (stx-map with-depth #'(tc.pat ...) #'([ooo ...] ...))]
+             #:with es    (stx-map with-depth #'(tc.tem ...) #'([ooo ...] ...))
+             #:with origs (stx-map with-depth #'(tc.stx ...) #'([ooo ...] ...))
+             #:with pat   (stx-map with-depth #'(tc.pat ...) #'([ooo ...] ...))]
     ; single clause, e.g. [... ⊢ e1 ≫ e1-]
     [pattern tc:tc
              #:with (deps ...) '(0)
-             #:with es #'(tc.tem)
-             #:with pat #'(tc.pat)])
+             #:with es    #'(tc.tem)
+             #:with origs #'(tc.stx)
+             #:with pat   #'(tc.pat)])
 
   ;; single type clause ( e ≫ e- ...)
   (define-syntax-class tc
-    #:attributes (tem pat)
+    #:attributes (stx tem pat)
     #:datum-literals (≫)
     ; synthesis (match the output type)
-    [pattern [tem ≫ expa . out:⇒-prop]
+    [pattern [stx ≫ expa . out:⇒-prop]
+             #:with tem #'stx
              #:with pat #'(~and expa out.e-pat)]
-    [pattern [tem ≫ expa out:⇒-prop ...]
+    [pattern [stx ≫ expa out:⇒-prop ...]
+             #:with tem #'stx
              #:with pat #'(~and expa out.e-pat ...)]
     ; checking
-    [pattern [e-stx ≫ expa . chk:⇐-prop]
-             #:with tem #'(add-expected e-stx chk.type)
+    [pattern [stx ≫ expa . chk:⇐-prop]
+             #:with tem #'(add-expected stx chk.type)
              #:with pat #'(~and expa chk.e-pat)]
     ; both
-    [pattern [e-stx ≫ expa chk:⇐-prop out:⇒-prop ...]
-             #:with tem #'(add-expected e-stx chk.type)
+    [pattern [stx ≫ expa chk:⇐-prop out:⇒-prop ...]
+             #:with tem #'(add-expected stx chk.type)
              #:with pat #'(~and expa
                                 chk.e-pat
                                 out.e-pat ...)])
@@ -280,19 +277,23 @@
     #:attributes (pat)
     #:datum-literals (⊢)
     [pattern (~seq [l ... ⊢ ~! r ...] ooo:elipsis ...)
-             #:with ctx:tc-context #'[l ...]
-             #:with rhs:tcs #'[r ...]
+             ; this WORKS, but l... and r... cause confusing syntax errors
+             ; however, making tc-context splicing is not easy
+             #:with lhs:tc-context #'[l ...]
+             #:with rhs:tcs        #'[r ...]
              #:with dep (stx-length #'[ooo ...])
-             #:with vars/ctx/es (with-depth #'(ctx.vars ctx.ctx rhs.es) #'[ooo ...])
-             #:with xs/es-pats  (with-depth #'(ctx.pat rhs.pat) #'[ooo ...])
+             #:with vars/ctx/es/origs
+             (with-depth #'(lhs.vars lhs.ctx rhs.es rhs.origs) #'[ooo ...])
+             #:with xs/es-pats
+             (with-depth #'(lhs.pat rhs.pat) #'[ooo ...])
              #:with pat
              #'(~post
                 (~post
                  (~parse xs/es-pats
                          (infers/depths 'dep
-                                        '(ctx.deps ...)
+                                        '(lhs.deps ...)
                                         '(rhs.deps ...)
-                                        #`vars/ctx/es
+                                        #`vars/ctx/es/origs
                                         #:tag (current-tag)))))])
 
   (define-splicing-syntax-class clause
@@ -544,10 +545,3 @@
                                [current-tag 'key1])
                   (syntax-parse/typecheck stx kw-stuff (... ...)
                     rule (... ...))))])))]))
-
-#;
-(define-typed-syntax blah
-  [(_ (x ...) (y ...)) ≫
-   [[x ≫ x- :: #%type] ... ⊢ [y ≫ y- ⇐ :: #%type] ...]
-   --------
-   [≻ 'ok]])
