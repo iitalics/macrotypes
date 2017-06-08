@@ -22,37 +22,7 @@
            (only-in lens/common lens-view lens-set)
            (only-in lens/private/syntax/stx stx-flatten/depth-lens))
 
-  #|
-  ;; infer/depth returns a list of three values:
-  ;;   tvxs- ; a stx-list of the expanded versions of type variables in the tvctx
-  ;;   xs-   ; a stx-list of the expanded versions of variables in the ctx
-  ;;   es*-  ; a nested list a depth given by the depth argument, with the same structure
-  ;;         ; as es*, containing the expanded es*, with the types attached
-  (define (infer/depth #:ctx ctx #:tvctx tvctx depth es* origs*
-                       #:tag [tag (current-tag)])
-    (define flat (stx-flatten/depth-lens depth))
-    (define es (lens-view flat es*))
-    (define origs (lens-view flat origs*))
-    (define/with-syntax [tvxs- xs- es- _]
-      (infer #:tvctx tvctx #:ctx ctx (stx-map pass-orig es origs) #:tag tag))
-    (define es*- (lens-set flat es* #`es-))
-    (list #'tvxs- #'xs- es*-))
-  ;; infers/depths
-  (define (infers/depths clause-depth tc-depth tvctxs/ctxs/ess/origss*
-                         #:tag [tag (current-tag)])
-    (define flat (stx-flatten/depth-lens clause-depth))
-    (define tvctxs/ctxs/ess/origss
-      (lens-view flat tvctxs/ctxs/ess/origss*))
-    (define tcs
-      (for/list ([tvctx/ctx/es/origs (in-list (stx->list tvctxs/ctxs/ess/origss))])
-        (match-define (list tvctx ctx es origs)
-          (stx->list tvctx/ctx/es/origs))
-        (infer/depth #:tvctx tvctx #:ctx ctx tc-depth es origs #:tag tag)))
-    (define res
-      (lens-set flat tvctxs/ctxs/ess/origss* tcs))
-    res)
-  |#
-
+  ; stx-map/depth : int (stx -> stx) stx-tree -> stx-tree
   (define (stx-map/depth d fn stx)
     (cond
       [(zero? d) (fn stx)]
@@ -83,6 +53,9 @@
         [(zero? d) (next)]
         [(stx-null? orig) orig]
         [else
+         ; TODO: removed datum->syntax ?
+         ;   this is a likely futile effort to improve error msgs in
+         ;   case something goes wrong.
          (datum->syntax (if (syntax? orig) orig #f)
           (cons (unflat (sub1 d) (stx-car orig))
                 (unflat d        (stx-cdr orig))))]))
@@ -157,6 +130,7 @@
                            "expected a separator consisting of dashes"
              #:fail-unless (>= (string-length str-dashes) 3)
                            "expected a separator of three or more dashes"])
+
   (define-syntax-class elipsis
     [pattern (~literal ...)])
 
@@ -167,12 +141,13 @@
            (with-depth (list stx (stx-car elipses))
                        (stx-cdr elipses))]))
 
-
+  ; matches a list of tag/type properties
   (define-syntax-class props
     [pattern [(~seq tag:id prop) ...]])
 
+  ; matches ⇒ pattern, surrounded in parenthesis, e.g. (⇒ : τ) or (⇒ τ)
   (define-syntax-class ⇒-prop
-    #:attributes (e-pat) ; e-pat = pattern to apply to expression containing property
+    #:attributes (e-pat) ; e-pat = pattern to apply to expanded form
     #:datum-literals (⇒)
     [pattern (~or (~and (⇒ tag:id prop-pat inner:⇒-prop ...))
                   (~and (⇒        prop-pat inner:⇒-prop ...) (~parse tag #',(current-tag))))
@@ -182,6 +157,9 @@
                      (~parse (~and inner.e-pat ... prop-pat)
                              (detach #'e-tmp `tag)))])
 
+  ; matches ⇐ pattern, surrounded in parenthesis, e.g. (⇐ : τ) or (⇐ τ)
+  ; the .type attribute contains τ in the above examples, and the .e-pat
+  ; attribute contains patterns to apply to expanded form
   (define-syntax-class ⇐-prop
     #:attributes (type e-pat)
     #:datum-literals (⇐)
@@ -200,18 +178,21 @@
                                           (get-orig #'e-tmp))
                               (typecheck-fail-msg/1 #'τ-exp #'τ-tmp #'e-tmp)))
                       (get-orig #'e-tmp)))])
-             
 
   ;; clause for the entire context (lhs of ⊢)
   (define-syntax-class tc-context
     #:attributes ([deps 1] vars ctx pat)
+    #:datum-literals (≫)
     ; consecutive context elems
     [pattern [(~seq ce:ctx-elem ~! ooo:elipsis ...) ...]
              #:with (deps ...) (stx-map stx-length #'([ooo ...] ...))
              #:with vars (stx-map with-depth #'(ce.var-stx ...) #'([ooo ...] ...))
              #:with ctx  (stx-map with-depth #'(ce.x+props ...) #'([ooo ...] ...))
              #:with pat  (stx-map with-depth #'(ce.pat ...)     #'([ooo ...] ...))]
-    ; nested contexts (in parenthesis, e.g. [(X Y) [x ≫ x- : t] ... ⊢ ...]
+    ; groups contexts, e.g. [(X Y) [x ≫ x- : t] ... ⊢ ...]
+    ; NOTE:
+    ;  some grouping, e.g. [[x ≫ x-] (X Y) ⊢ ...] doesn't work. but this is never
+    ;  done in any examples. try to implement or not?
     [pattern [c1:tc-context . c2:tc-context]
              #:with (deps ...) #'(c1.deps ... c2.deps ...)
              #:with vars (append (stx->list #'c1.vars) (stx->list #'c2.vars))
@@ -219,8 +200,8 @@
              #:with pat  (append (stx->list #'c1.pat) (stx->list #'c2.pat))])
 
   ;; single context element; variable [x ≫ x-] or type variable X
-  ;; new syntax: [MACRO x ≫ x-] allos the variable transformer to
-  ;; be overriden. in fact, X is just syntax sugar for [TYVAR X ≫ _]
+  ;; note: new syntax: [MACRO x ≫ x-] allows the variable transformer to
+  ;; be overriden. in fact, a lone X is just syntax sugar for [TYVAR X ≫ _]
   (define-syntax-class ctx-elem
     #:attributes (var-stx x+props pat)
     #:datum-literals (≫)
@@ -235,7 +216,7 @@
              #:with x+props #'X
              #:with pat #'_])
 
-  ;; type clauses under a context (rhs of ⊢)
+  ;; list of type clauses under a context (rhs of ⊢)
   (define-syntax-class tcs
     #:attributes ([deps 1] es origs pat)
     ; multiple clauses, e.g. [... ⊢ [e1 ≫ e1-] [e2 ≫ e2-]]
@@ -254,7 +235,7 @@
   ;; single type clause ( e ≫ e- ...)
   (define-syntax-class tc
     #:attributes (stx tem pat)
-    #:datum-literals (≫)
+    #:datum-literals (≫ ⇒ ⇐)
     ; synthesis (match the output type)
     [pattern [stx ≫ expa . out:⇒-prop]
              #:with tem #'stx
@@ -273,12 +254,14 @@
                                 chk.e-pat
                                 out.e-pat ...)])
 
-
-  ;; clause with a turnstile in the middle
+  ;; clause with a turnstile in the middle, and possibly ellipsis at the end
   (define-splicing-syntax-class tc-clause
     #:attributes (pat)
-    #:datum-literals (⊢)
+    #:datum-literals (⊢ ≫)
     [pattern (~seq [l ... ⊢ ~! . rhs:tcs] ooo:elipsis ...)
+             ; TODO: the [l ...] pattern makes things easy but may produce slightly
+             ; confusing error messages, since the error will refer to the parenthesized
+             ; (l ...) which never technically appears inyour code.
              #:with lhs:tc-context #'[l ...]
              #:with dep (stx-length #'[ooo ...])
              #:with vars/ctx/es/origs
