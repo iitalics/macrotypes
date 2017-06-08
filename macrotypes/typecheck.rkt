@@ -932,9 +932,14 @@
                  #:var-stx [var-stxs (var-transformers-for-context ctx tag tev kev)])
     (syntax-parse es
       [(e ...)
-       #:with ((~or (X:id X-stx)
-                    ([x:id . _] x-stx)) ...)
-              (stx-map list ctx var-stxs)
+       #:with (var-stx ...) var-stxs
+       #:with (x ...) (stx-map (lambda (ctx-elem)
+                                 (if (identifier? ctx-elem)
+                                     ctx-elem
+                                     (stx-car ctx-elem)))
+                               ctx)
+       ; TODO: turnstile syntax no longer uses tvctx.
+       ; is it obsolete? should we just prepend tvctx to ctx?
        #:with (~or ([tv:id (~seq tvsep:id tvk) ...] ...)
                    (~and (tv:id ...)
                          (~parse ([(tvsep ...) (tvk ...)] ...)
@@ -952,9 +957,8 @@
                                (mk-tyvar
                                 (attachs #'tv '(tvsep ...) #'(tvk ...)
                                          #:ev #,kev)))] ...)
-              (λ (X ... x ...) ; TODO: don't do this; try to retain the shape of the input context
-                (let*-syntax ([X X-stx] ...
-                              [x x-stx] ...)
+              (λ (x ...)
+                (let*-syntax ([x var-stx] ...)
                   (#%expression e) ... void)))))
        (list #'tvs+
              #'xs+
