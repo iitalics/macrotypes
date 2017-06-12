@@ -22,10 +22,8 @@
           (set-add s0 x))))
 
 
-
   (define unrestricted-type?
     (or/c Int? Str? !!?))
-
 
 
   (define used-vars (immutable-free-id-set))
@@ -55,9 +53,8 @@
   (define (save-scope)
     (set! scope-stack (cons used-vars scope-stack)))
 
-  (define (merge-scope
-           #:fail-msg [fail-msg "variable unused in certain code paths"]
-           #:fail-src [fail-src #f])
+  (define (merge-scope #:fail-msg fail-msg
+                       #:fail-src [fail-src #f])
     (for ([x (in-set (sym-diff used-vars (car scope-stack)))])
       (raise-syntax-error #f fail-msg fail-src x)))
 
@@ -77,6 +74,17 @@
    [≻ (#%app- printf- '"~a : ~a\n"
               e-
               '#,(type->str #'τ))]])
+
+
+(define-typed-variable-syntax (LIN x- : σ)
+  [x ≫
+   #:when (unrestricted-type? #'σ)
+   --------
+   [⊢ x- ⇒ σ]]
+  [x ≫
+   #:do [(use-lin-var #'x-)]
+   --------
+   [⊢ x- ⇒ σ]])
 
 
 (define-typed-syntax #%datum
@@ -106,22 +114,10 @@
    #:do [(save-scope)]
    [⊢ e1 ≫ e1- ⇒ σ1]
    [⊢ e2 ≫ e2- ⇒ σ2]
-   #:do [(merge-scope
-          #:fail-msg "variable may not be used by unrestricted tuple"
-          #:fail-src this-syntax)]
+   #:do [(merge-scope #:fail-msg "variable may not be used by unrestricted tuple"
+                      #:fail-src this-syntax)]
    --------
    [⊢ (#%app- list- e1- e2-) ⇒ (!! (⊗ σ1 σ2))]])
-
-
-(define-typed-variable (LIN x- : σ)
-  [x ≫
-   #:when (unrestricted-type? #'σ)
-   --------
-   [⊢ x- ⇒ σ]]
-  [x ≫
-   #:do [(use-lin-var #'x-)]
-   --------
-   [⊢ x- ⇒ σ]])
 
 
 (define-typed-syntax let
@@ -149,9 +145,8 @@
    #:with (σ ...) #'(ty.norm ...)
    [[LIN x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
    #:do [(pop-vars #'(x- ...) #'(σ ...))
-         (merge-scope
-          #:fail-msg "variable may not be used by unrestricted function"
-          #:fail-src this-syntax)]
+         (merge-scope #:fail-msg "variable may not be used by unrestricted function"
+                      #:fail-src this-syntax)]
    --------
    [⊢ (λ- (x- ...) e-) ⇒ (!! (-o σ ... σ_out))]])
 
@@ -163,6 +158,7 @@
    [⊢ e1 ≫ e1- ⇒ σ]
    #:do [(swap-scope)]
    [⊢ e2 ≫ e2- ⇐ σ]
-   #:do [(merge-scope #:fail-src this-syntax)]
+   #:do [(merge-scope #:fail-msg "variable may unused in certain code paths"
+                      #:fail-src this-syntax)]
    --------
    [⊢ (if- c- e1- e2-) ⇒ σ]])
