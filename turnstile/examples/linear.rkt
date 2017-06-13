@@ -1,12 +1,15 @@
 #lang turnstile
 
-(provide (type-out Int Str Bool -o ⊗)
+(provide (type-out Unit Int Str Bool -o ⊗)
          #%top-interaction #%datum
-         let λ if
-         (rename-out [λ lambda])
-         tup)
+         begin tup let λ #%app if
+         (rename-out [λ lambda]))
 
-(define-base-types Int Str Bool)
+(provide (typed-out [+ : (!! (-o Int Int Int))]
+                    [< : (!! (-o Int Int Bool))]
+                    [displayln : (!! (-o Str Unit))]))
+
+(define-base-types Unit Int Str Bool)
 (define-type-constructor -o #:arity >= 1)
 (define-type-constructor ⊗ #:arity = 2)
 (define-type-constructor !! #:arity = 1)
@@ -56,7 +59,8 @@
   (define (merge-scope #:fail-msg fail-msg
                        #:fail-src [fail-src #f])
     (for ([x (in-set (sym-diff used-vars (car scope-stack)))])
-      (raise-syntax-error #f fail-msg fail-src x)))
+      (raise-syntax-error #f fail-msg fail-src x))
+    (set! scope-stack (cdr scope-stack)))
 
   (define (swap-scope)
     (set! used-vars
@@ -100,6 +104,13 @@
   [(_ . x) ≫
    --------
    [#:error (type-error #:src #'x #:msg "Unsupported literal: ~v" #'x)]])
+
+
+(define-typed-syntax begin
+  [(_ e ... e0) ≫
+   [⊢ [e ≫ e- ⇒ _] ... [e0 ≫ e0- ⇒ σ]]
+   --------
+   [⊢ (begin- e- ... e0-) ⇒ σ]])
 
 
 (define-typed-syntax tup
@@ -151,8 +162,24 @@
    [⊢ (λ- (x- ...) e-) ⇒ (!! (-o σ ... σ_out))]])
 
 
+(define-typed-syntax #%app
+  [(_) ≫
+   --------
+   [⊢ (#%app- void-) ⇒ Unit]]
+
+  [(#%app fun arg ...) ≫
+   [⊢ fun ≫ fun- ⇒ σ_fun]
+   #:with (~or (~-o σ_in ... σ_out)
+               (~!! (~-o σ_in ... σ_out))
+               (~post (~fail "expected function type")))
+   #'σ_fun
+   [⊢ [arg ≫ arg- ⇐ σ_in] ...]
+   --------
+   [⊢ (#%app- fun- arg- ...) ⇒ σ_out]])
+
+
 (define-typed-syntax if
-  [(_ c e1 e2) ≫
+  [(if c e1 e2) ≫
    [⊢ c ≫ c- ⇐ Bool]
    #:do [(save-scope)]
    [⊢ e1 ≫ e1- ⇒ σ]
