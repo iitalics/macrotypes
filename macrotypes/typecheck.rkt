@@ -981,6 +981,8 @@
     (syntax-parser
       [X:id
        #'((current-tyvar-assign) #'X)]
+      [(x τ)
+       #'((current-var-assign) #'x '(:) #'(τ))]
       [(x (~seq sep:id τ) ...)
        #'((current-var-assign) #'x '(sep ...) #'(τ ...))]))
 
