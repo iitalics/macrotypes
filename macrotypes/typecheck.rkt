@@ -788,15 +788,21 @@
   (define (var-assign x seps τs)
     (attachs x seps τs #:ev (current-type-eval)))
 
+  ;; tyvar-assign :
+  ;; Id -> Stx
+  (define (tyvar-assign X)
+    (mk-tyvar (attach X ':: ((current-type-eval) #'#%type))))
+
   ;; current-var-assign :
   ;; (Parameterof [Id (Listof Sym) (StxListof TypeStx) -> Stx])
   (define current-var-assign
     (make-parameter var-assign))
-
-  (define current-tyvar-assign
-    (make-parameter (λ (X)
-                      (mk-tyvar (attach X ':: ((current-type-eval) #'#%type))))))
   
+  ;; current-tyvar-assign :
+  ;; (Parameterof [Id -> Stx])
+  (define current-tyvar-assign
+    (make-parameter tyvar-assign)
+
   ;; Type assignment macro (ie assign-type) for nicer syntax
   (define-syntax (⊢ stx)
     (syntax-parse stx
@@ -933,38 +939,31 @@
   ;;       but I'm not sure it properly generalizes
   ;;       eg, what if I need separate type-eval and kind-eval fns?
   ;; - should infer be moved into define-syntax-category?
-  ;; added: '#:var-stx lst' specifies the variable transformers used to bind
-  ;;   ctx in the expansion of the expressions.
+  ;; added: '#:var-assigns lst' specifies the variable assignment syntax for each variable.
   ;; TODO: delete #:tev and #:kev?
-  (define (infer es
-                 #:tvctx [tvctx '()]
-                 #:ctx [ctx '()]
-                 #:tag [tag (current-tag)]
-                 #:expa [expa expand/df]
-                 #:tev [tev #'(current-type-eval)]
-                 #:kev [kev #'(current-type-eval)]
-                 #:var-assigns [vas (stx-map default-var-assign ctx)])
-    (syntax-parse es
-      [(e ...)
-       #:with (var-assign ...) vas
-       #:with (x ...) (stx-map (λ (e) (if (identifier? e) e (stx-car e))) ctx)
-
-       ; TODO: turnstile syntax no longer uses tvctx.
-       ; is it obsolete? should we just prepend tvctx to ctx?
-       #:with (~or ([tv:id (~seq tvsep:id tvk) ...] ...)
-                   (~and (tv:id ...)
+  (define (infer es #:ctx [ctx null] #:tvctx [tvctx null]
+                    #:tag [tag (current-tag)] ; the "type" to return from es
+                    #:expa [expa expand/df] ; used to expand e
+                    #:tev [tev #'(current-type-eval)] #:kev [kev #'(current-type-eval)]
+                    #:var-assigns [vas (stx-map default-var-assign ctx)])
+    (syntax-parse (stx-map (λ (c) (if (identifier? c) c (stx-car c))) ctx)
+      [(x ...)
+       #:with (~or (~and (tv:id ...)
                          (~parse ([(tvsep ...) (tvk ...)] ...)
-                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...)))))
-              tvctx
+                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...))))
+                   ([tv (~seq tvsep:id tvk) ...] ...))
+                   tvctx
+       #:with (e ...) es
+       #:with (var-assign ...) vas
        #:with ((~literal #%plain-lambda) tvs+
                (~let*-syntax
                 ((~literal #%expression)
                  ((~literal #%plain-lambda) xs+
                   (~let*-syntax
                    ((~literal #%expression) e+) ... (~literal void))))))
-       (expa
+        (expa
         #`(λ (tv ...)
-            (let*-syntax ([tv (make-rename-transformer ; TODO: make this an argument too?
+            (let*-syntax ([tv (make-rename-transformer
                                (mk-tyvar
                                 (attachs #'tv '(tvsep ...) #'(tvk ...)
                                          #:ev #,kev)))] ...)
@@ -972,21 +971,16 @@
                 (let*-syntax ([x (make-variable-like-transformer
                                   var-assign)] ...)
                   (#%expression e) ... void)))))
-       (list #'tvs+
-             #'xs+
-             #'(e+ ...)
+       (list #'tvs+ #'xs+ 
+             #'(e+ ...) 
              (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
 
-  (define default-var-assign
+  ;; default-var-assign-syntax : Stx -> Stx
+  (define default-var-assign-syntax
     (syntax-parser
-      [X:id
-       #'((current-tyvar-assign) #'X)]
-      [(x τ)
-       #'((current-var-assign) #'x '(:) #'(τ))]
-      [(x (~seq sep:id τ) ...)
-       #'((current-var-assign) #'x '(sep ...) #'(τ ...))]))
-
-
+      [X:id                  #'((current-tyvar-assign) #'X)]
+      [(x τ)                 #'((current-var-assign) #'x '(:) #'(τ))]
+      [(x (~seq s:id τ) ...) #'((current-var-assign) #'x '(s ...) #'(τ ...))]))
 
   ;; fns derived from infer ---------------------------------------------------
   ;; some are syntactic shortcuts, some are for backwards compat
