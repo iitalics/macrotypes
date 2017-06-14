@@ -783,6 +783,20 @@
    [(_ e τ) (assign-type #`e #`τ)]))
 
 (begin-for-syntax
+  ;; var-assign :
+  ;; Id (Listof Sym) (StxListof TypeStx) -> Stx
+  (define (var-assign x seps τs)
+    (attachs x seps τs #:ev (current-type-eval)))
+
+  ;; current-var-assign :
+  ;; (Parameterof [Id (Listof Sym) (StxListof TypeStx) -> Stx])
+  (define current-var-assign
+    (make-parameter var-assign))
+
+  (define current-tyvar-assign
+    (make-parameter (λ (X)
+                      (mk-tyvar (attach X ':: ((current-type-eval) #'#%type))))))
+  
   ;; Type assignment macro (ie assign-type) for nicer syntax
   (define-syntax (⊢ stx)
     (syntax-parse stx
@@ -919,42 +933,58 @@
   ;;       but I'm not sure it properly generalizes
   ;;       eg, what if I need separate type-eval and kind-eval fns?
   ;; - should infer be moved into define-syntax-category?
-  (define (infer es #:ctx [ctx null] #:tvctx [tvctx null]
-                    #:tag [tag (current-tag)] ; the "type" to return from es
-                    #:expa [expa expand/df] ; used to expand e
-                    #:tev [tev #'(current-type-eval)]  ; type-eval (τ in ctx)
-                    #:key [kev #'(current-type-eval)]) ; kind-eval (tvk in tvctx)
-     (syntax-parse ctx
-       [((~or X:id [x:id (~seq sep:id τ) ...]) ...) ; dont expand; τ may reference to tv
-       #:with (~or (~and (tv:id ...)
+  ;; added: '#:var-stx lst' specifies the variable transformers used to bind
+  ;;   ctx in the expansion of the expressions.
+  ;; TODO: delete #:tev and #:kev?
+  (define (infer es
+                 #:tvctx [tvctx '()]
+                 #:ctx [ctx '()]
+                 #:tag [tag (current-tag)]
+                 #:expa [expa expand/df]
+                 #:tev [tev #'(current-type-eval)]
+                 #:kev [kev #'(current-type-eval)]
+                 #:var-assigns [vas (stx-map default-var-assign ctx)])
+    (syntax-parse es
+      [(e ...)
+       #:with (var-assign ...) vas
+       #:with (x ...) (stx-map (λ (e) (if (identifier? e) e (stx-car e))) ctx)
+
+       ; TODO: turnstile syntax no longer uses tvctx.
+       ; is it obsolete? should we just prepend tvctx to ctx?
+       #:with (~or ([tv:id (~seq tvsep:id tvk) ...] ...)
+                   (~and (tv:id ...)
                          (~parse ([(tvsep ...) (tvk ...)] ...)
-                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...))))
-                   ([tv (~seq tvsep:id tvk) ...] ...))
-                   tvctx
-       #:with (e ...) es
+                                 (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...)))))
+              tvctx
        #:with ((~literal #%plain-lambda) tvs+
                (~let*-syntax
                 ((~literal #%expression)
                  ((~literal #%plain-lambda) xs+
                   (~let*-syntax
                    ((~literal #%expression) e+) ... (~literal void))))))
-        (expa
+       (expa
         #`(λ (tv ...)
-            (let*-syntax ([tv (make-rename-transformer
+            (let*-syntax ([tv (make-rename-transformer ; TODO: make this an argument too?
                                (mk-tyvar
                                 (attachs #'tv '(tvsep ...) #'(tvk ...)
                                          #:ev #,kev)))] ...)
-              (λ (X ... x ...)
-                (let*-syntax ([X (make-variable-like-transformer
-                                 (mk-tyvar (attach #'X ':: (#,kev #'#%type))))] ...
-                              [x (make-variable-like-transformer
-                                  (attachs #'x '(sep ...) #'(τ ...)
-                                           #:ev #,tev))] ...)
+              (λ (x ...)
+                (let*-syntax ([x (make-variable-like-transformer
+                                  var-assign)] ...)
                   (#%expression e) ... void)))))
-       (list #'tvs+ #'xs+ 
-             #'(e+ ...) 
-             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]
-      [([x τ] ...) (infer es #:ctx #`([x #,tag τ] ...) #:tvctx tvctx #:tag tag)]))
+       (list #'tvs+
+             #'xs+
+             #'(e+ ...)
+             (stx-map (λ (e) (detach e tag)) #'(e+ ...)))]))
+
+  (define default-var-assign
+    (syntax-parser
+      [X:id
+       #'((current-tyvar-assign) #'X)]
+      [(x (~seq sep:id τ) ...)
+       #'((current-var-assign) #'x '(sep ...) #'(τ ...))]))
+
+
 
   ;; fns derived from infer ---------------------------------------------------
   ;; some are syntactic shortcuts, some are for backwards compat
