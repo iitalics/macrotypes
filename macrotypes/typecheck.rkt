@@ -801,7 +801,7 @@
   ;; current-tyvar-assign :
   ;; (Parameterof [Id -> Stx])
   (define current-tyvar-assign
-    (make-parameter tyvar-assign)
+    (make-parameter tyvar-assign))
 
   ;; Type assignment macro (ie assign-type) for nicer syntax
   (define-syntax (⊢ stx)
@@ -945,7 +945,7 @@
                     #:tag [tag (current-tag)] ; the "type" to return from es
                     #:expa [expa expand/df] ; used to expand e
                     #:tev [tev #'(current-type-eval)] #:kev [kev #'(current-type-eval)]
-                    #:var-assigns [vas (stx-map default-var-assign ctx)])
+                    #:var-assigns [vas (stx-map default-var-assign-syntax ctx)])
     (syntax-parse (stx-map (λ (c) (if (identifier? c) c (stx-car c))) ctx)
       [(x ...)
        #:with (~or (~and (tv:id ...)
