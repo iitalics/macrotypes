@@ -116,7 +116,7 @@
   [(_ s) ⇐ _ ≫
    [⊢ s ≫ s- ⇐ String]
    --------
-   [⊢ (#%app- error- s-) ⇒ Any]]
+   [⊢ (#%app- error- s-)]]
   [(_ s) ≫
    [⊢ s ≫ s- ⇐ String]
    --------
