@@ -764,7 +764,8 @@
   (define (checks? xs1 xs2) ; map current-check-relation pairwise of lists
     (and (stx-length=? xs1 xs2) (stx-andmap check? xs1 xs2)))
   (define current-ev (make-parameter (current-type-eval)))
-  (define current-tag (make-parameter (type-key1))))
+  (define current-tag (make-parameter (type-key1)))
+  (define current-stack (make-parameter '())))
 
 ;; type assignment utilities --------------------------------------------------
 (define-simple-macro (with-ctx ([x x- ty] ...) e ...)

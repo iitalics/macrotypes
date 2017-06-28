@@ -337,7 +337,44 @@
     [pattern (~seq #:fail-unless condition:expr message:expr)
              #:with pat
              #'(~post (~fail #:unless condition message))]
+
+    [pattern (~seq #:push tem)
+             #:with pat
+             #'(~do [current-stack (append [current-stack] (list #`tem))])]
+    [pattern (~seq #:push* [tem ...])
+             #:with pat
+             #'(~do [current-stack (append (stx->list #`(tem ...))
+                                           [current-stack])])]
+
+    [pattern (~seq #:pop elem-pat)
+             #:with tos (generate-temporary #'tos)
+             #:with bos (generate-temporary #'bos)
+             #:with message (format "no stack elements match pattern ~a"
+                                    (syntax->datum #'elem-pat))
+             #:with pat
+             #'(~and (~parse [bos (... ...) elem-pat . tos]
+                             [current-stack])
+                     (~do [current-stack (stx->list #'(bos (... ...) . tos))]))]
+
+    [pattern (~seq #:pop* [tos-pat ...])
+             #:with bos (generate-temporary #'bos)
+             #:with message "stack does not match pattern"
+             #:with pat
+             #'(~and (~parse [bos (... ...) tos-pat ...]
+                             [current-stack])
+                     (~do [current-stack (stx->list #'(bos (... ...)))]))]
+
+    [pattern (~seq #:peek elem-pat)
+             #:with message "stack does not match pattern"
+             #:with pat
+             #'(~parse [_ (... ...) elem-pat _ (... ...)] [current-stack])]
+    [pattern (~seq #:peek* [tos-pat ...])
+             #:with message "stack does not match pattern"
+             #:with pat
+             #'(~parse [_ (... ...) tos-pat ...] [current-stack])]
+
     )
+
 
   (define-splicing-syntax-class ⇒-prop/conclusion
     #:datum-literals (⇒)
