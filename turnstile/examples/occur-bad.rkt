@@ -49,7 +49,7 @@
 (define-typed-syntax #%occvar
   #:datum-literals (:)
   [(_ x : _) ≫
-   #:peek {#:*occ* (~free-id= #'x) : τ_deduced}
+   #:peek {(~free-id= #'x) : τ_deduced}
    --------
    [⊢ x ⇒ τ_deduced]]
 
@@ -68,7 +68,7 @@
          [(_ x:id) ≫
           #:peek* (#:*cond*)
           [⊢ x ≫ x-]
-          #:push {#:*occ* x- : type}
+          #:push {x- : type}
           --------
           [⊢ (#%app- predfn- x-) ⇒ Bool]]
          [(_ e:expr) ≫
