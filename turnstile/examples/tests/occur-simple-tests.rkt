@@ -1,4 +1,4 @@
-#lang s-exp turnstile/examples/occur-bad
+#lang s-exp turnstile/examples/occur-simple
 (require "rackunit-typechecking.rkt")
 
 
