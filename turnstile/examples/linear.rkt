@@ -15,15 +15,6 @@
 (define-type-constructor !! #:arity = 1)
 
 (begin-for-syntax
-  (require syntax/id-set)
-  (define (sym-diff s0 . ss)
-    (for*/fold ([s0 s0])
-               ([s (in-list ss)]
-                [x (in-set s)])
-      (if (set-member? s0 x)
-          (set-remove s0 x)
-          (set-add s0 x))))
-
   (define-syntax ~free-id=
     (pattern-expander
      (λ (stx)
@@ -34,7 +25,21 @@
                     (~fail #:unless (free-identifier=? #'x e))))]))))
 
   (define unrestricted-type?
-    (or/c Int? Str? !!?))
+    (or/c Bool? Unit? Int? !!?))
+
+
+  (define (fail/multiple-use x)
+    (raise-syntax-error #f "linear variable used more than once" x))
+
+  (define (fail/unused x)
+    (raise-syntax-error #f "linear variable unused" x))
+
+  (define (fail/unused/branch x)
+    (raise-syntax-error #f "linear variable may be unused in certain branches" x))
+
+  (define (fail/unrestriced-scope x)
+    (raise-syntax-error #f "linear variable may not be used by unrestricted function" x))
+
   )
 
 
@@ -45,14 +50,6 @@
    [≻ (#%app- printf- '"~a : ~a\n"
               e-
               '#,(type->str #'τ))]])
-
-(begin-for-syntax
-  (define (stx-append-map f . lsts)
-    (append* (apply stx-map f lsts)))
-
-  (current-var-assign
-   (lambda (x seps types)
-     #`(#%linvar #,x #,@(stx-append-map list seps types)))))
 
 
 (define-typed-syntax #%datum
@@ -70,21 +67,29 @@
    [#:error (type-error #:src #'x #:msg "Unsupported literal: ~v" #'x)]])
 
 
+(begin-for-syntax
+  [current-var-assign
+   (lambda (x seps types)
+     #`(#%linvar #,x : #,(stx-car types)))])
+
 (define-typed-syntax #%linvar
-  #:datum-literals [:]
+  #:datum-literals (:)
   [(_ x : σ) ≫
    #:when (unrestricted-type? #'σ)
    --------
    [⊢ x ⇒ σ]]
+
   [(_ x : _) ≫
    #:peek (~free-id= #'x)
-   #:do [(raise-syntax-error #f "linear variable used more than once" #'x)]
+   #:do [(fail/multiple-use #'x)]
    --------
    [#:error -]]
+
   [(_ x : σ) ≫
    #:push x
    --------
    [⊢ x ⇒ σ]])
+
 
 (define-typed-syntax begin
   [(_ e ... e0) ≫
@@ -111,7 +116,7 @@
    #:with (~or (~-o σ_in ... σ_out)
                (~!! (~-o σ_in ... σ_out))
                (~post (~fail "expected function type")))
-   #'σ_fun
+          #'σ_fun
    [⊢ [arg ≫ arg- ⇐ σ_in] ...]
    --------
    [⊢ (#%app- fun- arg- ...) ⇒ σ_out]])
@@ -125,19 +130,17 @@
 
 (define-for-syntax (out-of-scope xs scope)
   (for/fold ([scope scope])
-            ([var (in-syntax xs)])
+            ([x (in-syntax xs)])
     (syntax-parse scope
-      [(lo ... (~free-id= var) hi ...) #'(lo ... hi ...)]
-      [_ (raise-syntax-error #f "linear variable unused" var)])))
+      [(lo ... (~free-id= x) hi ...) #'(lo ... hi ...)]
+      [_ (fail/unused x)])))
 
-(define-for-syntax (merge-scopes scope1 scope2
-                                 #:fail fail)
+(define-for-syntax (merge-scopes scope1 scope2 #:fail fail)
   (syntax-parse (list scope1 scope2)
     [[() ()] #'()]
     [[(x . xs) ys]
      #:with (lo ... (~free-id= #'x) hi ...) #'ys
-     #:with scope- (merge-scopes #'xs #'(lo ... hi ...)
-                                 #:fail fail)
+     #:with scope- (merge-scopes #'xs #'(lo ... hi ...) #:fail fail)
      #'(x . scope-)]
     [(~or [(x . xs) _]
           [_ (x . xs)])
@@ -161,13 +164,9 @@
   #:datum-literals (∇)
   [(if e0 e1 e2) ≫
    [⊢ e0 ≫ e0- ⇐ Bool]
-   #:push ∇  [⊢ e1 ≫ e1- ⇒ σ] #:pop* (∇ tos1 ...)
-   #:push ∇  [⊢ e2 ≫ e2- ⇐ σ] #:pop* (∇ tos2 ...)
-   #:with (tos- ...) (merge-scopes #'(tos1 ...) #'(tos2 ...)
-                                   #:fail
-                                   (λ (x)
-                                     (raise-syntax-error
-                                      #f "linear variable may be unused in certain branches" x)))
+   #:push ∇ [⊢ e1 ≫ e1- ⇒ σ] #:pop* (∇ tos1 ...)
+   #:push ∇ [⊢ e2 ≫ e2- ⇐ σ] #:pop* (∇ tos2 ...)
+   #:with (tos- ...) (merge-scopes #'(tos1 ...) #'(tos2 ...) #:fail fail/unused/branch)
    #:push* (tos- ...)
    --------
    [⊢ (if- e0- e1- e2-) ⇒ σ]])
@@ -191,13 +190,6 @@
    [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
    #:pop* (∇ tos ...)
    #:with (tos- ...) (out-of-scope (linear-xs #'([x- . σ] ...)) #'(tos ...))
-   #:with _ (merge-scopes #'(tos- ...) #'()
-                          #:fail
-                          (λ (x)
-                            (raise-syntax-error
-                             #f
-                             "linear variable may not be used by unrestricted function"
-                             x
-                             this-syntax)))
+   #:with _ (merge-scopes #'(tos- ...) #'() #:fail fail/unrestriced-scope)
    --------
    [⊢ (λ- (x- ...) e-) ⇒ (!! (-o σ ... σ_out))]])
