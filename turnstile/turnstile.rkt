@@ -1,6 +1,6 @@
 #lang racket/base
 
-(provide (except-out (all-from-out macrotypes/typecheck) 
+(provide (except-out (all-from-out macrotypes/typecheck)
                      -define-typed-syntax -define-syntax-category)
          define-typed-syntax define-syntax-category
          (rename-out [define-typed-syntax define-typerule]
@@ -119,7 +119,7 @@
 (module syntax-classes racket/base
   (provide (all-defined-out))
   (require (for-meta 0 (submod ".." typecheck+))
-           (for-meta -1 (submod ".." typecheck+) 
+           (for-meta -1 (submod ".." typecheck+)
                      (except-in macrotypes/typecheck #%module-begin mk-~ mk-?))
            (for-meta -2 (except-in macrotypes/typecheck #%module-begin)))
   (define-syntax-class ---
@@ -343,8 +343,8 @@
              #'(~do [current-stack (append [current-stack] (list #`tem))])]
     [pattern (~seq #:push* [tem ...])
              #:with pat
-             #'(~do [current-stack (append (stx->list #`(tem ...))
-                                           [current-stack])])]
+             #'(~do [current-stack (append [current-stack]
+                                           (stx->list #`(tem ...)))])]
 
     [pattern (~seq #:pop elem-pat)
              #:with tos (generate-temporary #'tos)
