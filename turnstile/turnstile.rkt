@@ -438,11 +438,14 @@
     [(_ rulename:id
         (~and (~seq kw-stuff ...) :stxparse-kws)
         rule ...+)
-     #'(define-syntax (rulename stx)
-         (parameterize ([current-check-relation (current-typecheck-relation)]
-                        [current-ev (current-type-eval)]
-                        [current-tag (type-key1)])
-           (syntax-parse/typecheck stx kw-stuff ... rule ...)))]))
+     #'(define-syntax rulename
+         (let ([var-assign (language-var-assign)])
+           (λ (stx)
+             (parameterize ([current-check-relation (current-typecheck-relation)]
+                            [current-ev (current-type-eval)]
+                            [current-tag (type-key1)]
+                            [current-var-assign var-assign])
+               (syntax-parse/typecheck stx kw-stuff ... rule ...)))))]))
 
 (define-syntax define-typed-variable-syntax
   (syntax-parser
@@ -452,7 +455,7 @@
     [(_ rulename:id stuff+rules ...)
      #'(begin
          (begin-for-syntax
-           (current-var-assign (macro-var-assign #'rulename)))
+           (language-var-assign (macro-var-assign #'rulename)))
          (define-typed-syntax rulename
            stuff+rules ...))]))
 

@@ -804,6 +804,9 @@
   ;; (Parameterof [Id (Listof Sym) (StxListof TypeStx) -> Stx])
   (define current-var-assign
     (make-parameter var-assign))
+
+  (define language-var-assign
+    (make-parameter var-assign))
   
   ;; Type assignment macro (ie assign-type) for nicer syntax
   (define-syntax (⊢ stx)

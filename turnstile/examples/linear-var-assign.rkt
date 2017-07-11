@@ -82,14 +82,11 @@
 
 (define-typed-variable-syntax #%lin
   #:datum-literals [:]
-  [(_ x- : σ) ≫
-   #:when (unrestricted-type? #'σ)
+  [(_ x : σ) ≫
+   #:do [(unless (unrestricted-type? #'σ)
+           (use-lin-var #'x))]
    --------
-   [⊢ x- ⇒ σ]]
-  [(_ x- : σ) ≫
-   #:do [(use-lin-var #'x-)]
-   --------
-   [⊢ x- ⇒ σ]])
+   [⊢ x ⇒ σ]])
 
 
 (define-typed-syntax #%datum
