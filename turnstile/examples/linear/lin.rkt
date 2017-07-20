@@ -4,7 +4,6 @@
          define-type-alias
          define if begin let let* letrec λ #%app
          ⊔)
-         ;zero? = add1 sub1 not void +
 
 
 (provide (for-syntax current-linear?
@@ -14,14 +13,13 @@
                      pop-linear-context!
                      swap-linear-scope!
                      merge-linear-scope!)
-         (type-out Unit Int String Bool -o ⊗)
+         (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
-         begin tup let λ #%app if
+         begin let λ #%app if
          (rename-out [λ lambda]))
 
 
 (define-type-constructor -o #:arity >= 1)
-(define-type-constructor ⊗ #:arity >= 2)
 
 
 (begin-for-syntax
@@ -47,7 +45,7 @@
 
   ; current-linear : (Parameter (TypeStx -> Bool))
   (define current-linear?
-    (make-parameter (or/c -o? ⊗?)))
+    (make-parameter (or/c -o?)))
 
   ; linear-type? : TypeStx -> Bool
   (define (linear-type? t)
@@ -126,14 +124,6 @@
    [⊢ [e ≫ e- ⇒ _] ... [e0 ≫ e0- ⇒ σ]]
    --------
    [⊢ (begin- e- ... e0-) ⇒ σ]])
-
-
-(define-typed-syntax tup
-  [(_ e1 e2 ...+) ≫
-   [⊢ e1 ≫ e1- ⇒ σ1]
-   [⊢ e2 ≫ e2- ⇒ σ2] ...
-   --------
-   [⊢ (#%app- list- e1- e2- ...) ⇒ (⊗ σ1 σ2 ...)]])
 
 
 (define-typed-syntax let
