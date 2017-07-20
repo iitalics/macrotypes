@@ -15,7 +15,7 @@
                      merge-linear-scope!)
          (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
-         begin let λ #%app if
+         begin drop let λ #%app if
          (rename-out [λ lambda]))
 
 
@@ -121,9 +121,17 @@
 
 (define-typed-syntax begin
   [(_ e ... e0) ≫
-   [⊢ [e ≫ e- ⇒ _] ... [e0 ≫ e0- ⇒ σ]]
+   [⊢ e ≫ e- ⇐ Unit] ...
+   [⊢ e0 ≫ e0- ⇒ σ]
    --------
    [⊢ (begin- e- ... e0-) ⇒ σ]])
+
+
+(define-typed-syntax drop
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ _]
+   --------
+   [⊢ (#%app- void- e-) ⇒ Unit]])
 
 
 (define-typed-syntax let

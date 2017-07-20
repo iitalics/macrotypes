@@ -47,3 +47,8 @@
               (+ (twice 8)
                  (twice 9)))
             : Int -> 34)
+
+(check-type (let ([f (λ ([x : Int]) #t)])
+              (begin (drop f)
+                     3))
+            : Int -> 3)
