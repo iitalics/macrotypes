@@ -52,3 +52,21 @@
               (begin (drop f)
                      3))
             : Int -> 3)
+
+(check-type (letrec ([{<= : (→ Int Int Bool)}
+                      (λ ! ([n : Int] [m : Int])
+                         (if (zero? n)
+                             #t
+                             (if (zero? m)
+                                 #f
+                                 (<= (sub1 n) (sub1 m)))))])
+              (if (<= 4 1) 999
+                  (if (<= 3 3)
+                      0
+                      888)))
+            : Int -> 0)
+
+(typecheck-fail (letrec ([{f : (-o Int Int)}
+                          (λ ([x : Int]) (f x))])
+                  (f 3))
+                #:with-msg "may not bind linear type \\(-o Int Int\\) in letrec")

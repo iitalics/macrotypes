@@ -15,7 +15,7 @@
                      merge-linear-scope!)
          (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
-         begin drop let λ #%app if
+         begin drop let letrec λ #%app if
          (rename-out [λ lambda]))
 
 
@@ -120,7 +120,7 @@
 
 
 (define-typed-syntax begin
-  [(_ e ... e0) ≫
+  [(begin e ... e0) ≫
    [⊢ e ≫ e- ⇐ Unit] ...
    [⊢ e0 ≫ e0- ⇒ σ]
    --------
@@ -128,19 +128,31 @@
 
 
 (define-typed-syntax drop
-  [(_ e) ≫
+  [(drop e) ≫
    [⊢ e ≫ e- ⇒ _]
    --------
    [⊢ (#%app- void- e-) ⇒ Unit]])
 
 
 (define-typed-syntax let
-  [(let ([x rhs] ...) e) ≫
-   [⊢ [rhs ≫ rhs- ⇒ σ] ...]
+  [(let ([x e_rhs] ...) e) ≫
+   [⊢ e_rhs ≫ e_rhs- ⇒ σ] ...
    [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
    #:do [(pop-linear-context! #'([x- σ] ...))]
    --------
-   [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
+   [⊢ (let- ([x- e_rhs-] ...) e-) ⇒ σ_out]])
+
+
+(define-typed-syntax letrec
+  [(letrec ([b:type-bind e_rhs] ...) e) ≫
+   #:fail-when (ormap linear-type? (stx->list #'[b.type ...]))
+               (format "may not bind linear type ~a in letrec"
+                       (type->str (findf linear-type? (stx->list #'[b.type ...]))))
+   [[b.x ≫ x- : b.type] ...
+    ⊢ [e_rhs ≫ e_rhs- ⇐ b.type] ...
+    [e ≫ e- ⇒ σ_out]]
+   --------
+   [⊢ (letrec- ([x- e_rhs-] ...) e-) ⇒ σ_out]])
 
 
 (define-typed-syntax λ
