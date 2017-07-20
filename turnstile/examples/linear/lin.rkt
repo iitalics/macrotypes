@@ -19,7 +19,7 @@
 
 
 (define-type-constructor -o #:arity >= 1)
-(define-type-constructor ⊗ #:arity = 2)
+(define-type-constructor ⊗ #:arity >= 2)
 
 
 (begin-for-syntax
@@ -121,11 +121,11 @@
 
 
 (define-typed-syntax tup
-  [(_ e1 e2) ≫
+  [(_ e1 e2 ...+) ≫
    [⊢ e1 ≫ e1- ⇒ σ1]
-   [⊢ e2 ≫ e2- ⇒ σ2]
+   [⊢ e2 ≫ e2- ⇒ σ2] ...
    --------
-   [⊢ (#%app- list- e1- e2-) ⇒ (⊗ σ1 σ2)]])
+   [⊢ (#%app- list- e1- e2- ...) ⇒ (⊗ σ1 σ2 ...)]])
 
 
 (define-typed-syntax let

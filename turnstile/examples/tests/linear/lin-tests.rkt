@@ -8,7 +8,7 @@
 (check-type () : Unit)
 
 (check-type (tup 1 #t) : (⊗ Int Bool) -> '(1 #t))
-(check-type (tup 1 (tup 2 3)) : (⊗ Int (⊗ Int Int)) -> '(1 (2 3)))
+(check-type (tup 1 2 3) : (⊗ Int Int Int) -> '(1 2 3))
 
 (check-type (let ([x 3] [y 4]) y) : Int -> 4)
 (check-type (let ([p (tup 1 2)]) p) : (⊗ Int Int) -> '(1 2))
