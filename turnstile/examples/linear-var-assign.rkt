@@ -3,26 +3,23 @@
          #:except
          define-type-alias
          define if begin let let* letrec λ #%app
-         ⊔ zero? = add1 sub1 not void +)
+         ⊔)
+         ;zero? = add1 sub1 not void +
+
 
 (provide (for-syntax current-linear?
                      linear-scope
                      linear-var-in-scope?
                      use-linear-var!)
 
-         (type-out Unit Int String Bool -o ⊗ !!)
+         (type-out Unit Int String Bool -o ⊗)
          #%top-interaction #%module-begin require only-in
          begin tup let λ #%app if
-         (rename-out [λ lambda])
-
-         (typed-out [+ : (!! (-o Int Int Int))]
-                    [< : (!! (-o Int Int Bool))]
-                    [displayln : (!! (-o String Unit))]))
+         (rename-out [λ lambda]))
 
 
 (define-type-constructor -o #:arity >= 1)
 (define-type-constructor ⊗ #:arity = 2)
-(define-type-constructor !! #:arity = 1)
 
 
 (begin-for-syntax
@@ -159,7 +156,7 @@
          (merge-linear-scope! scope-prev
                               #:fail fail/unrestricted-fn)]
    --------
-   [⊢ (λ- (x- ...) e-) ⇒ (!! (-o σ ... σ_out))]])
+   [⊢ (λ- (x- ...) e-) ⇒ (→ σ ... σ_out)]])
 
 
 (define-typed-syntax #%app
@@ -170,7 +167,7 @@
   [(#%app fun arg ...) ≫
    [⊢ fun ≫ fun- ⇒ σ_fun]
    #:with (~or (~-o σ_in ... σ_out)
-               (~!! (~-o σ_in ... σ_out))
+               (~→ σ_in ... σ_out)
                (~post (~fail "expected linear function type")))
    #'σ_fun
    [⊢ [arg ≫ arg- ⇐ σ_in] ...]

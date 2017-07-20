@@ -39,7 +39,7 @@
 (check-type (let ([p (tup 1 2)]) (λ ([x : Int]) p))
             : (-o Int (⊗ Int Int)))
 
-(check-type (λ ! ([x : Int]) x) : (!! (-o Int Int)))
+(check-type (λ ! ([x : Int]) x) : (→ Int Int))
 (typecheck-fail (let ([p (tup 1 2)]) (λ ! ([x : Int]) p))
                 #:with-msg "linear variable may not be used by unrestricted function")
 
@@ -47,9 +47,8 @@
 (check-type (let ([f (λ ([x : Int] [y : Int]) y)])
               (f 3 4))
             : Int -> 4)
-(check-type + : (!! (-o Int Int Int)))
+(check-type + : (→ Int Int Int))
 (check-type (+ 1 2) : Int -> 3)
-(check-type (< 3 4) : Bool -> #t)
 
 
 (check-type (let ([×2 (λ ! ([x : Int]) (+ x x))])
