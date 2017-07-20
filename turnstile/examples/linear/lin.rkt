@@ -10,8 +10,10 @@
 (provide (for-syntax current-linear?
                      linear-scope
                      linear-var-in-scope?
-                     use-linear-var!)
-
+                     use-linear-var!
+                     pop-linear-context!
+                     swap-linear-scope!
+                     merge-linear-scope!)
          (type-out Unit Int String Bool -o ⊗)
          #%top-interaction #%module-begin require only-in
          begin tup let λ #%app if
@@ -76,7 +78,7 @@
   ;   ignores unrestricted types in the context, but checks that
   ;   variables with linear types must be used already.
   ;   the context is a syntax list of the form #'([x τ] ...)
-  (define (pop-linear-scope! ctx #:fail [fail fail/unused])
+  (define (pop-linear-context! ctx #:fail [fail fail/unused])
     (syntax-parse ctx
       [([X T] ...)
        (for ([x (in-syntax #'[X ...])]
@@ -84,6 +86,12 @@
          (when (and (linear-type? t)
                     (linear-var-in-scope? x))
            (fail x)))]))
+
+  ; swap-linear-scope! : FreeIdSet -> FreeIdSet
+  ;  swaps the current scope with the given scope, returning the old scope
+  (define (swap-linear-scope! new-scope)
+    (begin0 linear-scope
+      (set! linear-scope new-scope)))
 
   ; merge-linear-scope! : FreeIdSet -> Void
   ;  ensure that the current scope and the given scope are compatible,
@@ -132,7 +140,7 @@
   [(let ([x rhs] ...) e) ≫
    [⊢ [rhs ≫ rhs- ⇒ σ] ...]
    [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:do [(pop-linear-scope! #'([x- σ] ...))]
+   #:do [(pop-linear-context! #'([x- σ] ...))]
    --------
    [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
 
@@ -143,7 +151,7 @@
   [(λ ([x:id : T:type] ...) e) ≫
    #:with (σ ...) #'(T.norm ...)
    [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:do [(pop-linear-scope! #'([x- σ] ...))]
+   #:do [(pop-linear-context! #'([x- σ] ...))]
    --------
    [⊢ (λ- (x- ...) e-) ⇒ (-o σ ... σ_out)]]
 
@@ -152,7 +160,7 @@
    #:with (σ ...) #'(T.norm ...)
    #:do [(define scope-prev linear-scope)]
    [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:do [(pop-linear-scope! #'([x- σ] ...))
+   #:do [(pop-linear-context! #'([x- σ] ...))
          (merge-linear-scope! scope-prev
                               #:fail fail/unrestricted-fn)]
    --------
@@ -180,8 +188,7 @@
    [⊢ c ≫ c- ⇐ Bool]
    #:do [(define scope-pre-branch linear-scope)]
    [⊢ e1 ≫ e1- ⇒ σ]
-   #:do [(define scope-then linear-scope)
-         (set! linear-scope scope-pre-branch)]
+   #:do [(define scope-then (swap-linear-scope! scope-pre-branch))]
    [⊢ e2 ≫ e2- ⇐ σ]
    #:do [(merge-linear-scope! scope-then
                               #:fail fail/unbalanced-branches)]
