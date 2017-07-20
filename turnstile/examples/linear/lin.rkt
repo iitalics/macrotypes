@@ -79,11 +79,16 @@
   (define (pop-linear-context! ctx #:fail [fail fail/unused])
     (syntax-parse ctx
       [([X T] ...)
-       (for ([x (in-syntax #'[X ...])]
-             [t (in-syntax #'[T ...])])
-         (when (and (linear-type? t)
-                    (linear-var-in-scope? x))
-           (fail x)))]))
+       (define lin-xs
+         (immutable-free-id-set
+          (for/list ([x (in-syntax #'[X ...])]
+                     [t (in-syntax #'[T ...])]
+                     #:when (linear-type? t))
+            (if (linear-var-in-scope? x)
+                (fail x)
+                x))))
+       (set! linear-scope
+             (set-subtract linear-scope lin-xs))]))
 
   ; swap-linear-scope! : FreeIdSet -> FreeIdSet
   ;  swaps the current scope with the given scope, returning the old scope
