@@ -1,5 +1,5 @@
 #lang turnstile
-(extends "ext-stlc.rkt"
+(extends "../ext-stlc.rkt"
          #:except
          define-type-alias
          define if begin let let* letrec λ #%app

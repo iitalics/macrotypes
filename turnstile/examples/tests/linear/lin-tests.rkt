@@ -1,4 +1,4 @@
-#lang s-exp turnstile/examples/linear-var-assign
+#lang s-exp turnstile/examples/linear/lin
 
 (require turnstile/rackunit-typechecking
          (only-in racket/base quote))
