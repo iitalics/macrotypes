@@ -140,9 +140,9 @@
 
 
 (define-typed-syntax let
-  [(let ([x e_rhs] ...) e) ≫
+  [(let ([x e_rhs] ...) e ...+) ≫
    [⊢ e_rhs ≫ e_rhs- ⇒ σ] ...
-   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
+   [[x ≫ x- : σ] ... ⊢ (begin e ...) ≫ e- ⇒ σ_out]
    #:do [(pop-linear-context! #'([x- σ] ...))]
    --------
    [⊢ (let- ([x- e_rhs-] ...) e-) ⇒ σ_out]])

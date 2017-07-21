@@ -3,18 +3,16 @@
 
 (check-type
  (let* ([(c c-out) (make-channel {Int})])
-   (begin
-     (thread (λ () (channel-put c-out 5)))
-     (thread (λ () (channel-put c-out 4)))
-     (let* ([(c1 x) (channel-get c)]
-            [(c2 y) (channel-get c1)])
-       (begin (drop c2)
-              (+ x y)))))
+   (thread (λ () (channel-put c-out 5)))
+   (thread (λ () (channel-put c-out 4)))
+   (let* ([(c1 x) (channel-get c)]
+          [(c2 y) (channel-get c1)])
+     (drop c2)
+     (+ x y)))
  : Int -> 9)
 
 (typecheck-fail
  (let* ([(c-in c-out) (make-channel {String})])
-   (begin
-     (thread (λ () (channel-get c-in)))
-     (channel-get c-in)))
+   (thread (λ () (channel-get c-in)))
+   (channel-get c-in))
  #:with-msg "c-in: linear variable used more than once")

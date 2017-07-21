@@ -1,9 +1,7 @@
 #lang turnstile/lang
 (extends "lin.rkt")
 
-(provide (all-from-out "lin.rkt")
-         (type-out ⊗)
-         tup let*)
+(provide (type-out ⊗) tup let*)
 
 (define-type-constructor ⊗ #:arity >= 2)
 
@@ -25,32 +23,37 @@
 
 
 (define-typed-syntax let*
-  [(_ () e) ≫
-   --------
-   [≻ e]]
-
   ; normal let* recursive bindings
-  [(_ ([x:id e_rhs] . xs) e_body) ≫
+  [(_ ([x:id e_rhs] . xs) . body) ≫
    [⊢ e_rhs ≫ e_rhs- ⇒ σ]
-   [[x ≫ x- : σ] ⊢ (let* xs e_body) ≫ e_body- ⇒ σ_out]
+   [[x ≫ x- : σ] ⊢ (let* xs . body) ≫ e_body- ⇒ σ_out]
    #:do [(pop-linear-context! #'([x- σ]))]
    --------
    [⊢ (let- ([x- e_rhs-]) e_body-) ⇒ σ_out]]
 
   ; tuple unpacking with (let* ([(x ...) tup]) ...)
-  [(_ ([(x ...) e_rhs] . xs) e_body) ≫
+  [(_ ([(x ...) e_rhs] . xs) . body) ≫
    [⊢ e_rhs ≫ e_rhs- ⇒ (~⊗ σ ...)]
    #:fail-unless (stx-length=? #'[σ ...] #'[x ...])
                  (num-tuple-fail-msg #'[σ ...] #'[x ...])
 
-   [[x ≫ x- : σ] ... ⊢ (let* xs e_body) ≫ e_body- ⇒ σ_out]
+   [[x ≫ x- : σ] ... ⊢ (let* xs . body) ≫ e_body- ⇒ σ_out]
    #:do [(pop-linear-context! #'([x- σ] ...))]
 
    #:with tmp (generate-temporary #'e_tup)
    #:with (cad*r/tmp ...) (map (gen-cad*rs #'tmp)
                                (range (stx-length #'[x ...])))
    --------
-   [⊢ (let*- ([tmp e_rhs-] [x- cad*r/tmp] ...) e_body-) ⇒ σ_out]])
+   [⊢ (let*- ([tmp e_rhs-] [x- cad*r/tmp] ...) e_body-) ⇒ σ_out]]
+
+  [(_ () e) ≫
+   --------
+   [≻ e]]
+
+  [(_ () e ...+) ≫
+   --------
+   [≻ (lin:begin e ...)]])
+
 
 ; gen-cad*rs : Id -> Int -> Stx
 ;  e.g. ((gen-cad*rs #'x) 3) = #'(car (cdr (cdr (cdr x))))
