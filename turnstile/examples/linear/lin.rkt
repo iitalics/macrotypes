@@ -1,7 +1,6 @@
 #lang turnstile
 (extends "../ext-stlc.rkt"
          #:except
-         define-type-alias
          define if begin let let* letrec λ #%app
          ⊔)
 
@@ -15,6 +14,7 @@
                      merge-linear-scope!)
          (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
+         define
          begin drop let letrec λ #%app if
          (rename-out [λ lambda]))
 
@@ -209,3 +209,24 @@
                               #:fail fail/unbalanced-branches)]
    --------
    [⊢ (if- c- e1- e2-) ⇒ σ]])
+
+
+(define-typed-syntax define
+  #:datum-literals (:)
+  [(define (f [x:id : ty] ...) ret
+     e ...+) ≫
+   --------
+   [≻ (define f : (→ ty ... ret)
+        (letrec ([{f : (→ ty ... ret)}
+                  (λ ! ([x : ty] ...)
+                    (begin e ...))])
+          f))]]
+
+  [(_ x:id : τ:type e:expr) ≫
+   #:fail-when (linear-type? #'τ.norm)
+               "cannot define linear type globally"
+   #:with y (generate-temporary #'x)
+   --------
+   [≻ (begin-
+        (define-syntax x (make-rename-transformer (⊢ y : τ.norm)))
+        (define- y (ann e : τ.norm)))]])
