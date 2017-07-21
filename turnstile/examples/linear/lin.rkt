@@ -6,6 +6,8 @@
 
 
 (provide (for-syntax current-linear?
+                     linear-type?
+                     unrestricted-type?
                      linear-scope
                      linear-var-in-scope?
                      use-linear-var!
@@ -179,7 +181,28 @@
          (merge-linear-scope! scope-prev
                               #:fail fail/unrestricted-fn)]
    --------
-   [⊢ (λ- (x- ...) e-) ⇒ (→ σ ... σ_out)]])
+   [⊢ (λ- (x- ...) e-) ⇒ (→ σ ... σ_out)]]
+
+  ; inferred linear function
+  [(λ (x:id ...) e) ⇐ (~-o σ ... σ_out) ≫
+   #:fail-unless (stx-length=? #'[x ...] #'[σ ...])
+   (num-args-fail-msg this-syntax #'[x ...] #'[σ ...])
+   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇐ σ_out]
+   #:do [(pop-linear-context! #'([x- σ] ...))]
+   --------
+   [⊢ (λ- (x- ...) e-)]]
+
+  ; inferred unrestricted function
+  [(λ (x:id ...) e) ⇐ (~→ σ ... σ_out) ≫
+   #:fail-unless (stx-length=? #'[x ...] #'[σ ...])
+   (num-args-fail-msg this-syntax #'[x ...] #'[σ ...])
+   #:do [(define scope-prev linear-scope)]
+   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇐ σ_out]
+   #:do [(pop-linear-context! #'([x- σ] ...))
+         (merge-linear-scope! scope-prev
+                              #:fail fail/unrestricted-fn)]
+   --------
+   [⊢ (λ- (x- ...) e-)]])
 
 
 (define-typed-syntax #%app

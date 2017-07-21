@@ -17,6 +17,8 @@
 
 (check-type (λ ([x : Int]) x) : (-o Int Int))
 (check-type (λ ! ([x : Int]) x) : (→ Int Int))
+(check-type (λ (x) x) : (-o String String))
+(check-type (λ (x) x) : (→ String String))
 
 (check-type + : (→ Int Int Int))
 (check-type (+ 1 2) : Int -> 3)
@@ -54,7 +56,7 @@
             : Int -> 3)
 
 (check-type (letrec ([{<= : (→ Int Int Bool)}
-                      (λ ! ([n : Int] [m : Int])
+                      (λ (n m)
                          (if (zero? n)
                              #t
                              (if (zero? m)
@@ -67,6 +69,6 @@
             : Int -> 0)
 
 (typecheck-fail (letrec ([{f : (-o Int Int)}
-                          (λ ([x : Int]) (f x))])
+                          (λ (x) (f x))])
                   (f 3))
                 #:with-msg "may not bind linear type \\(-o Int Int\\) in letrec")
