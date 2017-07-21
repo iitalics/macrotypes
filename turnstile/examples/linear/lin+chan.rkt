@@ -1,9 +1,9 @@
 #lang turnstile/lang
-(extends "lin+cons.rkt")
-(reuse thread sleep #:from "lin+thread.rkt")
+(extends "lin+tup.rkt")
 
 (provide (type-out InChan OutChan)
-         make-channel channel-put channel-get)
+         make-channel channel-put channel-get
+         thread sleep)
 
 (define-type-constructor InChan #:arity = 1)
 (define-type-constructor OutChan #:arity = 1)
@@ -38,3 +38,24 @@
    [⊢ (let- ([tmp ch-])
             (#%app- list- tmp (#%app- channel-get- tmp)))
       ⇒ (⊗ (InChan σ) σ)]])
+
+
+(define-typed-syntax thread
+  [(_ f) ≫
+   [⊢ f ≫ f- ⇒ (~-o _)]
+   --------
+   [⊢ (#%app- void- (#%app- thread- f-)) ⇒ Unit]])
+
+
+(define-typed-syntax sleep
+  [(_) ≫
+   --------
+   [⊢ (#%app- sleep-) ⇒ Unit]]
+
+  [(_ e) ≫
+   [⊢ e ≫ e- ⇒ σ]
+   #:fail-unless (or (Int? #'σ)
+                     (Float? #'σ))
+   "invalid sleep time, expected Int or Float"
+   --------
+   [⊢ (#%app- sleep- e-) ⇒ Unit]])
