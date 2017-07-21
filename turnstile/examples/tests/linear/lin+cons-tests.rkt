@@ -2,8 +2,8 @@
 (require turnstile/rackunit-typechecking)
 
 (check-type
- (letrec ([{length : (→ (LList Int) Int)}
-           (λ ! ([lst : (LList Int)])
+ (letrec ([{length : (→ (MList Int) Int)}
+           (λ ! ([lst : (MList Int)])
               (match-list lst
                 (cons _ xs @ l) ->
                   (begin (drop l)
@@ -14,17 +14,17 @@
 
 
 (check-type
- (letrec ([{rev-append : (→ (LList String) (LList String) (LList String))}
-           (λ ! ([lst : (LList String)]
-                 [acc : (LList String)])
+ (letrec ([{rev-append : (→ (MList String) (MList String) (MList String))}
+           (λ ! ([lst : (MList String)]
+                 [acc : (MList String)])
               (match-list lst
                 (cons x xs @ l) -> (rev-append xs (cons x acc @ l))
                 nil -> acc))]
 
-          [{rev : (→ (LList String) (LList String))}
-           (λ ! ([lst : (LList String)])
+          [{rev : (→ (MList String) (MList String))}
+           (λ ! ([lst : (MList String)])
               (rev-append lst (nil)))])
 
    (rev (cons "a" (cons "b" (cons "c" (nil))))))
- : (LList String)
+ : (MList String)
  -> (cons "c" (cons "b" (cons "a" (nil)))))

@@ -1,17 +1,17 @@
 #lang turnstile/lang
 (extends "lin+tup.rkt")
 
-(provide (type-out LList LList0)
+(provide (type-out MList MList0)
          cons nil match-list)
 
-(define-type-constructor LList #:arity = 1)
-(define-base-type LList0)
+(define-type-constructor MList #:arity = 1)
+(define-base-type MList0)
 
 (begin-for-syntax
   (define (fail/unbalanced-branches x)
     (raise-syntax-error #f "linear variable may be unused in certain branches" x))
 
-  [current-linear? (or/c LList? LList0? [current-linear?])])
+  [current-linear? (or/c MList? MList0? [current-linear?])])
 
 (define-typed-syntax cons
   #:datum-literals (@)
@@ -19,25 +19,25 @@
   ; implicit memory location created
   [(_ e e_rest) ≫
    [⊢ e ≫ e- ⇒ σ]
-   [⊢ e_rest ≫ e_rest- ⇐ (LList σ)]
+   [⊢ e_rest ≫ e_rest- ⇐ (MList σ)]
    --------
-   [⊢ (#%app- mcons- e- e_rest-) ⇒ (LList σ)]]
+   [⊢ (#%app- mcons- e- e_rest-) ⇒ (MList σ)]]
 
   ; with memory location given
   [(_ e e_rest @ e_loc) ≫
    [⊢ e ≫ e- ⇒ σ]
-   [⊢ e_rest ≫ e_rest- ⇐ (LList σ)]
-   [⊢ e_loc ≫ e_loc- ⇐ LList0]
+   [⊢ e_rest ≫ e_rest- ⇐ (MList σ)]
+   [⊢ e_loc ≫ e_loc- ⇐ MList0]
    #:with tmp (generate-temporary #'e_loc)
    --------
    [⊢ (let- ([tmp e_loc-])
             (#%app- set-mcar!- tmp e-)
             (#%app- set-mcdr!- tmp e_rest-)
             tmp)
-      ⇒ (LList σ)]])
+      ⇒ (MList σ)]])
 
 (define-typed-syntax nil
-  [(_) ⇐ (~LList σ) ≫
+  [(_) ⇐ (~MList σ) ≫
    --------
    [⊢ '()]])
 
@@ -50,18 +50,18 @@
    #:with [e_nil] #'[e_nil+ ...]
 
    ; list
-   [⊢ e_list ≫ e_list- ⇒ (~LList σ)]
+   [⊢ e_list ≫ e_list- ⇒ (~MList σ)]
    #:do [(define scope-pre-branch linear-scope)]
 
-   #:with llst ((current-type-eval) #'(LList σ))
-   #:with llst0 ((current-type-eval) #'LList0)
+   #:with σ_xs ((current-type-eval) #'(MList σ))
+   #:with σ_l ((current-type-eval) #'MList0)
 
    ; cons branch
    [[x ≫ x- : σ]
-    [xs ≫ xs- : llst]
-    [l ≫ l- : llst0]
+    [xs ≫ xs- : σ_xs]
+    [l ≫ l- : σ_l]
     ⊢ e_cons ≫ e_cons- ⇒ σ_out]
-   #:do [(pop-linear-context! #'([x- σ] [xs- llst] [l- llst0]))]
+   #:do [(pop-linear-context! #'([x- σ] [xs- σ_xs] [l- σ_l]))]
    #:do [(define scope-cons (swap-linear-scope! scope-pre-branch))]
 
    ; nil branch
