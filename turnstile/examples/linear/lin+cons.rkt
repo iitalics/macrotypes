@@ -13,6 +13,7 @@
 
   [current-linear? (or/c MList? MList0? [current-linear?])])
 
+
 (define-typed-syntax cons
   #:datum-literals (@)
 
@@ -44,6 +45,9 @@
    --------
    [⊢ '()]])
 
+(define-for-syntax (scope->string [s (linear-scope)])
+  (~a (for/list ([x (in-set s)]) (syntax-e x))))
+
 (define-typed-syntax match-list
   #:datum-literals (cons nil @)
   [(_ e_list
@@ -54,22 +58,26 @@
 
    ; list
    [⊢ e_list ≫ e_list- ⇒ (~MList σ)]
-   #:do [(define scope-pre-branch linear-scope)]
-
    #:with σ_xs ((current-type-eval) #'(MList σ))
    #:with σ_l ((current-type-eval) #'MList0)
 
+   #:do [(define scope/cons (copy-linear-scope))
+         (define scope/nil (copy-linear-scope))]
+
    ; cons branch
-   [[x ≫ x- : σ]
-    [xs ≫ xs- : σ_xs]
-    [l ≫ l- : σ_l]
-    ⊢ e_cons ≫ e_cons- ⇒ σ_out]
-   #:do [(pop-linear-context! #'([x- σ] [xs- σ_xs] [l- σ_l]))]
-   #:do [(define scope-cons (swap-linear-scope! scope-pre-branch))]
+   #:mode linear-scope scope/cons
+   ([[x ≫ x- : σ]
+     [xs ≫ xs- : σ_xs]
+     [l ≫ l- : σ_l]
+     ⊢ e_cons ≫ e_cons- ⇒ σ_out]
+    #:do [(pop-linear-context! #'([x- σ] [xs- σ_xs] [l- σ_l]))])
 
    ; nil branch
-   [⊢ e_nil ≫ e_nil- ⇐ σ_out]
-   #:do [(merge-linear-scope! scope-cons
+   #:mode linear-scope scope/nil
+   ([⊢ [e_nil ≫ e_nil- ⇐ σ_out]])
+
+   ; (merge branches)
+   #:do [(merge-linear-scope! scope/cons scope/nil
                               #:fail fail/unbalanced-branches)]
 
    #:with tmp (generate-temporary #'e_list)

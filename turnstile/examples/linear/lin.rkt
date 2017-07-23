@@ -9,10 +9,10 @@
                      linear-type?
                      unrestricted-type?
                      linear-scope
+                     copy-linear-scope
                      linear-var-in-scope?
                      use-linear-var!
                      pop-linear-context!
-                     swap-linear-scope!
                      merge-linear-scope!)
          (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
@@ -61,17 +61,17 @@
   ; linear-scope : FreeIdSet
   ;   holds a list of all linear variables that have been used.
   (define linear-scope
-    (immutable-free-id-set))
+    (make-parameter (mutable-free-id-set)))
 
   ; linear-var-in-scope? : Id -> Bool
   (define (linear-var-in-scope? x)
-    (not (set-member? linear-scope x)))
+    (not (set-member? [linear-scope] x)))
 
   ; use-linear-var! : Id -> Void
   (define (use-linear-var! x #:fail [fail fail/multiple-use])
     (unless (linear-var-in-scope? x)
       (fail x))
-    (set! linear-scope (set-add linear-scope x)))
+    (set-add! [linear-scope] x))
 
   ; pop-linear-scope! : StxList -> Void
   ;   drops from scope the linear variables in the given context
@@ -89,22 +89,25 @@
             (if (linear-var-in-scope? x)
                 (fail x)
                 x))))
-       (set! linear-scope
-             (set-subtract linear-scope lin-xs))]))
+       (set-subtract! [linear-scope] lin-xs)]))
 
   ; swap-linear-scope! : FreeIdSet -> FreeIdSet
   ;  swaps the current scope with the given scope, returning the old scope
-  (define (swap-linear-scope! new-scope)
-    (begin0 linear-scope
-      (set! linear-scope new-scope)))
+  (define (copy-linear-scope)
+    (mutable-free-id-set
+     (set-copy [linear-scope])))
 
   ; merge-linear-scope! : FreeIdSet -> Void
   ;  ensure that the current scope and the given scope are compatible,
   ;  e.g. when unifying the branches in a conditional
-  (define (merge-linear-scope! merge-scope #:fail [fail fail/unbalanced-branches])
-    (for ([x (in-set (sym-diff linear-scope
-                               merge-scope))])
-      (fail x)))
+  (define (merge-linear-scope! s1 s2 #:fail [fail fail/unbalanced-branches])
+    (for ([x (in-set s1)]
+          #:when (not (set-member? s2 x)))
+      (fail x))
+    (for ([x (in-set s2)]
+          #:when (not (set-member? s1 x)))
+      (fail x))
+    (set-union! [linear-scope] s1))
 
   )
 
@@ -167,10 +170,11 @@
   ; unrestricted function
   [(λ ! ([x:id : T:type] ...) e) ≫
    #:with (σ ...) #'(T.norm ...)
-   #:do [(define scope-prev linear-scope)]
-   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:do [(pop-linear-context! #'([x- σ] ...))
-         (merge-linear-scope! scope-prev
+   #:do [(define fn-scope (copy-linear-scope))]
+   #:mode linear-scope fn-scope
+     ([[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
+      #:do [(pop-linear-context! #'([x- σ] ...))])
+   #:do [(merge-linear-scope! [linear-scope] fn-scope
                               #:fail fail/unrestricted-fn)]
    --------
    [⊢ (λ- (x- ...) e-) ⇒ (→ σ ... σ_out)]]
@@ -188,10 +192,11 @@
   [(λ (x:id ...) e) ⇐ (~→ σ ... σ_out) ≫
    #:fail-unless (stx-length=? #'[x ...] #'[σ ...])
    (num-args-fail-msg this-syntax #'[x ...] #'[σ ...])
-   #:do [(define scope-prev linear-scope)]
-   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇐ σ_out]
-   #:do [(pop-linear-context! #'([x- σ] ...))
-         (merge-linear-scope! scope-prev
+   #:do [(define fn-scope (copy-linear-scope))]
+   #:mode linear-scope fn-scope
+     ([[x ≫ x- : σ] ... ⊢ e ≫ e- ⇐ σ_out]
+      #:do [(pop-linear-context! #'([x- σ] ...))])
+   #:do [(merge-linear-scope! [linear-scope] fn-scope
                               #:fail fail/unrestricted-fn)]
    --------
    [⊢ (λ- (x- ...) e-)]])
@@ -216,11 +221,13 @@
 (define-typed-syntax if
   [(if c e1 e2) ≫
    [⊢ c ≫ c- ⇐ Bool]
-   #:do [(define scope-pre-branch linear-scope)]
-   [⊢ e1 ≫ e1- ⇒ σ]
-   #:do [(define scope-then (swap-linear-scope! scope-pre-branch))]
-   [⊢ e2 ≫ e2- ⇐ σ]
-   #:do [(merge-linear-scope! scope-then
+   #:do [(define scope/then (copy-linear-scope))
+         (define scope/else (copy-linear-scope))]
+   [⊢ [e1 ≫ e1- ⇒ σ] #:mode linear-scope scope/then]
+   [⊢ [e2 ≫ e2- ⇐ σ] #:mode linear-scope scope/else]
+
+   ; (merge branches)
+   #:do [(merge-linear-scope! scope/then scope/else
                               #:fail fail/unbalanced-branches)]
    --------
    [⊢ (if- c- e1- e2-) ⇒ σ]])
