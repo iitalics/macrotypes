@@ -1,28 +1,27 @@
 #lang turnstile
-(extends "ext-stlc.rkt"
+(extends "../ext-stlc.rkt"
          #:except
-         define-type-alias
          define if begin let let* letrec λ #%app
-         ⊔ zero? = add1 sub1 not void +)
+         ⊔)
+
 
 (provide (for-syntax current-linear?
+                     linear-type?
+                     unrestricted-type?
                      linear-scope
                      linear-var-in-scope?
-                     use-linear-var!)
-
-         (type-out Unit Int String Bool -o ⊗ !!)
+                     use-linear-var!
+                     pop-linear-context!
+                     swap-linear-scope!
+                     merge-linear-scope!)
+         (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
-         begin tup let λ #%app if
-         (rename-out [λ lambda])
-
-         (typed-out [+ : (!! (-o Int Int Int))]
-                    [< : (!! (-o Int Int Bool))]
-                    [displayln : (!! (-o String Unit))]))
+         define #%linear
+         begin drop let letrec λ #%app if
+         (rename-out [λ lambda]))
 
 
 (define-type-constructor -o #:arity >= 1)
-(define-type-constructor ⊗ #:arity = 2)
-(define-type-constructor !! #:arity = 1)
 
 
 (begin-for-syntax
@@ -48,7 +47,7 @@
 
   ; current-linear : (Parameter (TypeStx -> Bool))
   (define current-linear?
-    (make-parameter (or/c -o? ⊗?)))
+    (make-parameter (or/c -o?)))
 
   ; linear-type? : TypeStx -> Bool
   (define (linear-type? t)
@@ -79,14 +78,25 @@
   ;   ignores unrestricted types in the context, but checks that
   ;   variables with linear types must be used already.
   ;   the context is a syntax list of the form #'([x τ] ...)
-  (define (pop-linear-scope! ctx #:fail [fail fail/unused])
+  (define (pop-linear-context! ctx #:fail [fail fail/unused])
     (syntax-parse ctx
       [([X T] ...)
-       (for ([x (in-syntax #'[X ...])]
-             [t (in-syntax #'[T ...])])
-         (when (and (linear-type? t)
-                    (linear-var-in-scope? x))
-           (fail x)))]))
+       (define lin-xs
+         (immutable-free-id-set
+          (for/list ([x (in-syntax #'[X ...])]
+                     [t (in-syntax #'[T ...])]
+                     #:when (linear-type? t))
+            (if (linear-var-in-scope? x)
+                (fail x)
+                x))))
+       (set! linear-scope
+             (set-subtract linear-scope lin-xs))]))
+
+  ; swap-linear-scope! : FreeIdSet -> FreeIdSet
+  ;  swaps the current scope with the given scope, returning the old scope
+  (define (swap-linear-scope! new-scope)
+    (begin0 linear-scope
+      (set! linear-scope new-scope)))
 
   ; merge-linear-scope! : FreeIdSet -> Void
   ;  ensure that the current scope and the given scope are compatible,
@@ -117,27 +127,39 @@
 
 
 (define-typed-syntax begin
-  [(_ e ... e0) ≫
-   [⊢ [e ≫ e- ⇒ _] ... [e0 ≫ e0- ⇒ σ]]
+  [(begin e ... e0) ≫
+   [⊢ e ≫ e- ⇐ Unit] ...
+   [⊢ e0 ≫ e0- ⇒ σ]
    --------
    [⊢ (begin- e- ... e0-) ⇒ σ]])
 
 
-(define-typed-syntax tup
-  [(_ e1 e2) ≫
-   [⊢ e1 ≫ e1- ⇒ σ1]
-   [⊢ e2 ≫ e2- ⇒ σ2]
+(define-typed-syntax drop
+  [(drop e) ≫
+   [⊢ e ≫ e- ⇒ _]
    --------
-   [⊢ (#%app- list- e1- e2-) ⇒ (⊗ σ1 σ2)]])
+   [⊢ (#%app- void- e-) ⇒ Unit]])
 
 
 (define-typed-syntax let
-  [(let ([x rhs] ...) e) ≫
-   [⊢ [rhs ≫ rhs- ⇒ σ] ...]
-   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:do [(pop-linear-scope! #'([x- σ] ...))]
+  [(let ([x e_rhs] ...) e ...+) ≫
+   [⊢ e_rhs ≫ e_rhs- ⇒ σ] ...
+   [[x ≫ x- : σ] ... ⊢ (begin e ...) ≫ e- ⇒ σ_out]
+   #:do [(pop-linear-context! #'([x- σ] ...))]
    --------
-   [⊢ (let- ([x- rhs-] ...) e-) ⇒ σ_out]])
+   [⊢ (let- ([x- e_rhs-] ...) e-) ⇒ σ_out]])
+
+
+(define-typed-syntax letrec
+  [(letrec ([b:type-bind e_rhs] ...) e) ≫
+   #:fail-when (ormap linear-type? (stx->list #'[b.type ...]))
+               (format "may not bind linear type ~a in letrec"
+                       (type->str (findf linear-type? (stx->list #'[b.type ...]))))
+   [[b.x ≫ x- : b.type] ...
+    ⊢ [e_rhs ≫ e_rhs- ⇐ b.type] ...
+    [e ≫ e- ⇒ σ_out]]
+   --------
+   [⊢ (letrec- ([x- e_rhs-] ...) e-) ⇒ σ_out]])
 
 
 (define-typed-syntax λ
@@ -146,7 +168,7 @@
   [(λ ([x:id : T:type] ...) e) ≫
    #:with (σ ...) #'(T.norm ...)
    [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:do [(pop-linear-scope! #'([x- σ] ...))]
+   #:do [(pop-linear-context! #'([x- σ] ...))]
    --------
    [⊢ (λ- (x- ...) e-) ⇒ (-o σ ... σ_out)]]
 
@@ -155,11 +177,32 @@
    #:with (σ ...) #'(T.norm ...)
    #:do [(define scope-prev linear-scope)]
    [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
-   #:do [(pop-linear-scope! #'([x- σ] ...))
+   #:do [(pop-linear-context! #'([x- σ] ...))
          (merge-linear-scope! scope-prev
                               #:fail fail/unrestricted-fn)]
    --------
-   [⊢ (λ- (x- ...) e-) ⇒ (!! (-o σ ... σ_out))]])
+   [⊢ (λ- (x- ...) e-) ⇒ (→ σ ... σ_out)]]
+
+  ; inferred linear function
+  [(λ (x:id ...) e) ⇐ (~-o σ ... σ_out) ≫
+   #:fail-unless (stx-length=? #'[x ...] #'[σ ...])
+   (num-args-fail-msg this-syntax #'[x ...] #'[σ ...])
+   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇐ σ_out]
+   #:do [(pop-linear-context! #'([x- σ] ...))]
+   --------
+   [⊢ (λ- (x- ...) e-)]]
+
+  ; inferred unrestricted function
+  [(λ (x:id ...) e) ⇐ (~→ σ ... σ_out) ≫
+   #:fail-unless (stx-length=? #'[x ...] #'[σ ...])
+   (num-args-fail-msg this-syntax #'[x ...] #'[σ ...])
+   #:do [(define scope-prev linear-scope)]
+   [[x ≫ x- : σ] ... ⊢ e ≫ e- ⇐ σ_out]
+   #:do [(pop-linear-context! #'([x- σ] ...))
+         (merge-linear-scope! scope-prev
+                              #:fail fail/unrestricted-fn)]
+   --------
+   [⊢ (λ- (x- ...) e-)]])
 
 
 (define-typed-syntax #%app
@@ -170,7 +213,7 @@
   [(#%app fun arg ...) ≫
    [⊢ fun ≫ fun- ⇒ σ_fun]
    #:with (~or (~-o σ_in ... σ_out)
-               (~!! (~-o σ_in ... σ_out))
+               (~→ σ_in ... σ_out)
                (~post (~fail "expected linear function type")))
    #'σ_fun
    [⊢ [arg ≫ arg- ⇐ σ_in] ...]
@@ -183,10 +226,30 @@
    [⊢ c ≫ c- ⇐ Bool]
    #:do [(define scope-pre-branch linear-scope)]
    [⊢ e1 ≫ e1- ⇒ σ]
-   #:do [(define scope-then linear-scope)
-         (set! linear-scope scope-pre-branch)]
+   #:do [(define scope-then (swap-linear-scope! scope-pre-branch))]
    [⊢ e2 ≫ e2- ⇐ σ]
    #:do [(merge-linear-scope! scope-then
                               #:fail fail/unbalanced-branches)]
    --------
    [⊢ (if- c- e1- e2-) ⇒ σ]])
+
+
+(define-typed-syntax define
+  #:datum-literals (:)
+  [(define (f [x:id : ty] ...) ret
+     e ...+) ≫
+   --------
+   [≻ (define f : (→ ty ... ret)
+        (letrec ([{f : (→ ty ... ret)}
+                  (λ ! ([x : ty] ...)
+                    (begin e ...))])
+          f))]]
+
+  [(_ x:id : τ:type e:expr) ≫
+   #:fail-when (linear-type? #'τ.norm)
+               "cannot define linear type globally"
+   #:with y (generate-temporary #'x)
+   --------
+   [≻ (begin-
+        (define-syntax x (make-rename-transformer (⊢ y : τ.norm)))
+        (define- y (ann e : τ.norm)))]])
