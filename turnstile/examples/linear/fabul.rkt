@@ -155,7 +155,7 @@
           #:fail-when (eq? [current-language] 'LANG)
                       (format "already in ~a language"
                               (language-name 'LANG))
-          [⊢ [e ≫ e- ⇒ τ] #:mode current-language 'LANG]
+          #:mode current-language 'LANG ([⊢ e ≫ e- ⇒ τ])
           #:with σ (convert-type [current-language] #'τ #:src this-syntax)
           #:with e-- (convert-syntax #'τ #'σ #'e-)
           --------
