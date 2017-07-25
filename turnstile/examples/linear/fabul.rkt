@@ -177,7 +177,8 @@
 
 
 ; variable syntax
-(define-typed-syntax #%fabul-var
+(define-typed-variable-syntax
+  #:datum-literals (:)
   [(_ x- : τ) ≫
    #:when (eq? [current-language] 'U)
    #:fail-unless (fully-unrestricted? #'τ)
@@ -189,14 +190,6 @@
    #:when (eq? [current-language] 'L)
    --------
    [≻ (#%linear x- : σ)]])
-
-(begin-for-syntax
-  (define (stx-append-map f . lsts)
-    (append* (apply stx-map f lsts)))
-  (current-var-assign
-   (lambda (x seps types)
-     #`(#%fabul-var #,x #,@(stx-append-map list seps types)))))
-
 
 
 ; REPL prints expression types

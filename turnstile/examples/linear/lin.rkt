@@ -99,7 +99,6 @@
   ;  ensure that the current scope and the given scope are compatible,
   ;  e.g. when unifying the branches in a conditional
   (define (merge-linear-scopes! mode #:fail [fail fail/unbalanced-branches] . ss)
-    (set-clear! [linear-scope])
     (case mode
       [(∩)
        (let* ([s0 (set-copy (car ss))])
@@ -113,7 +112,6 @@
 
       [(∪)
        (apply set-union! (cons [linear-scope] ss))]))
-
   )
 
 
