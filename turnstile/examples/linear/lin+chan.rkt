@@ -17,8 +17,8 @@
    #:with σ #'ty.norm
    #:with tmp (generate-temporary)
    --------
-   [⊢ (let- ([tmp (#%app- make-channel-)])
-            (#%app- list- tmp tmp))
+   [⊢ (let ([tmp (#%app- make-channel-)])
+            (list tmp tmp))
       ⇒ (⊗ (InChan σ) (OutChan σ))]])
 
 
@@ -27,7 +27,7 @@
    [⊢ ch ≫ ch- ⇒ (~OutChan σ)]
    [⊢ e ≫ e- ⇐ σ]
    --------
-   [⊢ (#%app- channel-put- ch- e-) ⇒ Unit]])
+   [⊢ (channel-put- ch- e-) ⇒ Unit]])
 
 
 (define-typed-syntax channel-get
@@ -35,8 +35,8 @@
    [⊢ ch ≫ ch- ⇒ (~InChan σ)]
    #:with tmp (generate-temporary #'ch)
    --------
-   [⊢ (let- ([tmp ch-])
-            (#%app- list- tmp (#%app- channel-get- tmp)))
+   [⊢ (let ([tmp ch-])
+            (list tmp (channel-get- tmp)))
       ⇒ (⊗ (InChan σ) σ)]])
 
 
@@ -44,13 +44,13 @@
   [(_ f) ≫
    [⊢ f ≫ f- ⇒ (~-o _)]
    --------
-   [⊢ (#%app- void- (#%app- thread- f-)) ⇒ Unit]])
+   [⊢ (void (thread- f-)) ⇒ Unit]])
 
 
 (define-typed-syntax sleep
   [(_) ≫
    --------
-   [⊢ (#%app- sleep-) ⇒ Unit]]
+   [⊢ (sleep-) ⇒ Unit]]
 
   [(_ e) ≫
    [⊢ e ≫ e- ⇒ σ]
@@ -58,4 +58,4 @@
                      (Float? #'σ))
    "invalid sleep time, expected Int or Float"
    --------
-   [⊢ (#%app- sleep- e-) ⇒ Unit]])
+   [⊢ (sleep- e-) ⇒ Unit]])
