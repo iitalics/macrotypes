@@ -109,6 +109,8 @@
         --------
         [≻ [(x- ...) e- σ_bra]]]))
 
+   #:do [(apply merge-linear-scopes! (cons '∩ scope/branches))]
+
    #:with tmp (generate-temporary)
    #:with ((cad*r/tmp ...) ...)
    (stx-map (λ (xs)

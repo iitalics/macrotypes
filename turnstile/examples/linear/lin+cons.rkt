@@ -8,9 +8,6 @@
 (define-base-type MList0)
 
 (begin-for-syntax
-  (define (fail/unbalanced-branches x)
-    (raise-syntax-error #f "linear variable may be unused in certain branches" x))
-
   [current-linear? (or/c MList? MList0? [current-linear?])])
 
 
@@ -77,8 +74,7 @@
    ([⊢ [e_nil ≫ e_nil- ⇐ σ_out]])
 
    ; (merge branches)
-   #:do [(merge-linear-scope! scope/cons scope/nil
-                              #:fail fail/unbalanced-branches)]
+   #:do [(merge-linear-scopes! '∩ scope/cons scope/nil)]
 
    #:with tmp (generate-temporary #'e_list)
    --------

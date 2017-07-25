@@ -11,7 +11,7 @@
                      linear-var-in-scope?
                      use-linear-var!
                      pop-linear-context!
-                     merge-linear-scope!)
+                     merge-linear-scopes!)
          (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
          define #%linear
@@ -98,14 +98,21 @@
   ; merge-linear-scope! : FreeIdSet -> Void
   ;  ensure that the current scope and the given scope are compatible,
   ;  e.g. when unifying the branches in a conditional
-  (define (merge-linear-scope! s1 s2 #:fail [fail fail/unbalanced-branches])
-    (for ([x (in-set s1)]
-          #:when (not (set-member? s2 x)))
-      (fail x))
-    (for ([x (in-set s2)]
-          #:when (not (set-member? s1 x)))
-      (fail x))
-    (set-union! [linear-scope] s1))
+  (define (merge-linear-scopes! mode #:fail [fail fail/unbalanced-branches] . ss)
+    (set-clear! [linear-scope])
+    (case mode
+      [(∩)
+       (let* ([s0 (set-copy (car ss))])
+         (apply set-intersect! (cons s0 (cdr ss)))
+         (for* ([s (in-list ss)]
+                [x (in-set s)]
+                #:when (not (set-member? s0 x)))
+           (fail x))
+         (set-clear! [linear-scope])
+         (set-union! [linear-scope] s0))]
+
+      [(∪)
+       (apply set-union! (cons [linear-scope] ss))]))
 
   )
 
@@ -173,8 +180,7 @@
    #:mode linear-scope fn-scope
      ([[x ≫ x- : σ] ... ⊢ e ≫ e- ⇒ σ_out]
       #:do [(pop-linear-context! #'([x- σ] ...))])
-   #:do [(merge-linear-scope! [linear-scope] fn-scope
-                              #:fail fail/unrestricted-fn)]
+   #:do [(merge-linear-scopes! '∩ [linear-scope] fn-scope #:fail fail/unrestricted-fn)]
    --------
    [⊢ (λ- (x- ...) e-) ⇒ (→ σ ... σ_out)]]
 
@@ -195,8 +201,7 @@
    #:mode linear-scope fn-scope
      ([[x ≫ x- : σ] ... ⊢ e ≫ e- ⇐ σ_out]
       #:do [(pop-linear-context! #'([x- σ] ...))])
-   #:do [(merge-linear-scope! [linear-scope] fn-scope
-                              #:fail fail/unrestricted-fn)]
+   #:do [(merge-linear-scopes! '∩ [linear-scope] fn-scope #:fail fail/unrestricted-fn)]
    --------
    [⊢ (λ- (x- ...) e-)]])
 
@@ -226,7 +231,7 @@
    [⊢ [e2 ≫ e2- ⇐ σ] #:mode linear-scope scope/else]
 
    ; (merge branches)
-   #:do [(merge-linear-scope! scope/then scope/else
+   #:do [(merge-linear-scopes! '∩ scope/then scope/else
                               #:fail fail/unbalanced-branches)]
    --------
    [⊢ (if- c- e1- e2-) ⇒ σ]])
