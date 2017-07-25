@@ -113,6 +113,7 @@
 
 
 (define-typed-variable-syntax
+  #:name #%linear
   #:datum-literals [:]
   [(_ x- : σ) ≫ ; record use when σ restricted
    #:do [(unless (unrestricted-type? #'σ)
