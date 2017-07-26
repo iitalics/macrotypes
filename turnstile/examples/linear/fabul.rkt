@@ -189,7 +189,7 @@
   [(_ x- : σ) ≫
    #:when (eq? [current-language] 'L)
    --------
-   [≻ (#%linear x- : σ)]])
+   [≻ (#%lin-var x- : σ)]])
 
 
 ; REPL prints expression types

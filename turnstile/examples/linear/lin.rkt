@@ -14,7 +14,7 @@
                      merge-linear-scopes!)
          (type-out Unit Int String Bool -o)
          #%top-interaction #%module-begin require only-in
-         define #%linear
+         define #%lin-var
          begin drop let letrec λ #%app if
          (rename-out [λ lambda]))
 
@@ -116,7 +116,7 @@
 
 
 (define-typed-variable-syntax
-  #:name #%linear
+  #:name #%lin-var
   #:datum-literals [:]
   [(_ x- : σ) ≫ ; record use when σ restricted
    #:do [(unless (unrestricted-type? #'σ)
