@@ -12,6 +12,7 @@
 ;;   logical combinators
 (struct ⊗ term (x y) #:transparent)
 (struct one term () #:transparent)
+;; TODO: ⊕
 
 ;; a rule (in -o out), parameterized with variables
 (struct rule (vars in out)
@@ -25,7 +26,6 @@
 
 ;; a type (not used much currently)
 (struct type ())
-
 
 ;; fold into repeated binary application
 ;; e.g. (⊗* a b c) ≡ (⊗ a (⊗ b c))
@@ -58,7 +58,7 @@
            port))
 
 
-;; rule-satisfy : term? rule? -> (or/c #f (listof term?))
+;; rule-satisfy : rule? term? -> (or/c #f (listof term?))
 ;;
 ;; attempt to satisfy the given rule with the given context.
 ;; if satisfiable, returns a (cons ctx' in'), where ctx' = new
@@ -67,7 +67,7 @@
 ;; otherwise, returns #f.
 (define (rule-apply rul ctx)
 
-  ;; sat : trm in subs -> (list (cons trm' subs) ...)
+  ;; sat : trm inp subs -> (list (cons trm' subs) ...)
   (define (sat trm inp subs)
     (match inp
       [(one)
@@ -102,12 +102,14 @@
 
          [else '()])]))
 
+  ;; unify : unique sym/unique subs -> (or #f subs)
   (define (unify lh rh subs)
     (match (hash-ref subs rh rh)
       [(? symbol?) (hash-set subs rh lh)]
       [(== lh) subs]
       [_ #f]))
 
+  ;; unify* : (listof unique) (listof sym/unique) subs -> (or #f subs)
   (define (unify* lhs rhs subs)
     (for/fold ([subs subs])
               ([lh (in-list lhs)]
@@ -212,10 +214,10 @@
   (define A (mk-block "A"))
   (define B (mk-block "B"))
   (check-equal? (rule-apply unstack (on A B))
-                (list (cons (⊗ (one) (⊗ (clear A) (clear B)))
-                            (on A B))))
+                (list (list (⊗ (one) (⊗ (clear A) (clear B)))
+                            A B)))
 
-
-  (rule-apply unstack (⊗ (one) (one)))
+  (check-equal? (rule-apply unstack (⊗ (one) (one)))
+                '())
 
   )
