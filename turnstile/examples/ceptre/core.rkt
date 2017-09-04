@@ -10,9 +10,10 @@
 ;;   predicate (compound object)
 (struct predicate term (name id args) #:transparent)
 ;;   logical combinators
-(struct ⊗ term (x y) #:transparent)
+(struct ⊗ term (a b) #:transparent)
+(struct ⊕ term (a b) #:transparent)
 (struct one term () #:transparent)
-;; TODO: ⊕
+(struct zero term () #:transparent)
 
 ;; a rule (in -o out), parameterized with variables
 (struct rule (vars in out)
@@ -34,6 +35,11 @@
     ['() (one)]
     [(list as ... b) (foldr ⊗ b as)]))
 
+(define (⊕* . l)
+  (match l
+    ['() (zero)]
+    [(list as ... b) (foldr ⊕ b as)]))
+
 
 (define (custom-write-term trm port mode)
   (match trm
@@ -43,7 +49,10 @@
      (display (list* N (map ~v ts)) port)]
     [(⊗ a b)
      (display (list '* (~v a) (~v b)) port)]
-    [(one) (display "1" port)]))
+    [(⊕ a b)
+     (display (list '+ (~v a) (~v b)) port)]
+    [(one) (display "1" port)]
+    [(zero) (display "0" port)]))
 
 (define (custom-write-rule rul port mode)
   (fprintf port "[~a] ~a -o ~a"
@@ -70,13 +79,17 @@
   ;; sat : trm inp subs -> (list (cons trm' subs) ...)
   (define (sat trm inp subs)
     (match inp
-      [(one)
-       (list (cons trm subs))]
+      [(one) (list (cons trm subs))]
+      [(zero) (list)]
 
       [(⊗ a b)
        (for*/list ([r  (in-list (sat trm     a subs))]
                    [r+ (in-list (sat (car r) b (cdr r)))])
          r+)]
+
+      [(⊕ a b)
+       (append (sat trm a subs)
+               (sat trm b subs))]
 
       [(predicate _ i rhs)
        (find trm i rhs subs)]))
@@ -85,18 +98,22 @@
   (define (find trm i rhs subs)
     (match trm
       [(one) '()]
+      [(zero) (list trm subs)]
 
       [(⊗ a b)
-       (append
-        (map (λ (r) (cons (⊗ (car r) b) (cdr r)))
-             (find a i rhs subs))
-        (map (λ (r) (cons (⊗ a (car r)) (cdr r)))
-             (find b i rhs subs)))]
+       (append (for/list ([r (in-list (find a i rhs subs))])
+                 (cons (⊗ (car r) b) (cdr r)))
+               (for/list ([r (in-list (find b i rhs subs))])
+                 (cons (⊗ a (car r)) (cdr r))))]
+
+      [(⊕ a b)
+       (for*/list ([r  (in-list (find a i rhs subs))]
+                   [r+ (in-list (find b i rhs (cdr r)))])
+         r+)]
 
       [(predicate _ j lhs)
        (cond
-         [(and (eq? i j)
-               (unify* lhs rhs subs))
+         [(and (eq? i j) (unify* lhs rhs subs))
           => (λ (subs)
                (list (cons (one) subs)))]
 
@@ -177,14 +194,14 @@
       (define choice
         (or (for/or ([c (in-port)])
               (cond
-                [(zero? c) (finish)]
+                [(= c 0) (finish)]
 
                 [(and (exact-integer? c)
-                      (<= 0 c (length opts)))
+                      (<= 1 c (length opts)))
                  (list-ref opts (sub1 c))]
 
                 [else
-                 (and (printf "invalid index!\n") #f)]))
+                 (and (printf "invalid index ~a!\n" c) #f)]))
             (finish)))
 
       (third choice))))

@@ -7,7 +7,8 @@
          define-stage
          define
          interactive
-         #%datum #%app * (rename-out [quot quote]))
+         #%datum * +
+         #%app (rename-out [quot quote]))
 
 (define-base-types Term Stage)
 (define-type-constructor Pred #:arity >= 0)
@@ -52,14 +53,14 @@
                   (#%app- list arg ...))))]])
 
 
-(define-typed-syntax #%app
-  [(_ p arg ...) ≫
-   [⊢ p ≫ p- ⇒ (~Pred τ ...)]
-   #:fail-unless (stx-length=? #'[τ ...] #'[arg ...])
-   (num-args-fail-msg #'p #'[τ ...] #'[arg ...])
-   [⊢ [arg ≫ arg- ⇐ τ] ...]
+(define-typed-syntax #%datum
+  [(_ . 1) ≫
    --------
-   [⊢ (#%app- p- arg- ...) ⇒ Term]])
+   [⊢ (#%app- core:one) ⇒ Term]]
+
+  [(_ . 0) ≫
+   --------
+   [⊢ (#%app- core:zero) ⇒ Term]])
 
 
 (define-typed-syntax *
@@ -69,10 +70,24 @@
    [⊢ (#%app- core:⊗* t- ...) ⇒ Term]])
 
 
-(define-typed-syntax #%datum
-  [(_ . 1) ≫
+(define-typed-syntax +
+  [(_ t ...) ≫
+   [⊢ [t ≫ t- ⇐ Term] ...]
    --------
-   [⊢ (#%app- core:one) ⇒ Term]])
+   [⊢ (#%app- core:⊕* t- ...) ⇒ Term]])
+
+
+
+
+
+(define-typed-syntax #%app
+  [(_ p arg ...) ≫
+   [⊢ p ≫ p- ⇒ (~Pred τ ...)]
+   #:fail-unless (stx-length=? #'[τ ...] #'[arg ...])
+   (num-args-fail-msg #'p #'[τ ...] #'[arg ...])
+   [⊢ [arg ≫ arg- ⇐ τ] ...]
+   --------
+   [⊢ (#%app- p- arg- ...) ⇒ Term]])
 
 
 (begin-for-syntax
