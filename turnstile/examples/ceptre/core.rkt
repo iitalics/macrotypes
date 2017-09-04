@@ -189,19 +189,27 @@
                 i
                 (cons (first o) (second o))))
 
-      (display "?- ")
-      (flush-output)
+
       (define choice
-        (or (for/or ([c (in-port)])
+        (or (for/or ([_ (in-producer
+                         (λ ()
+                           (display "?- ")
+                           (flush-output)))]
+                     [c (in-port)])
               (cond
-                [(= c 0) (finish)]
+                [(eqv? c 0)
+                 (finish)]
 
                 [(and (exact-integer? c)
                       (<= 1 c (length opts)))
                  (list-ref opts (sub1 c))]
 
+                [(eq? c '?)
+                 (printf "state: ~a\n" ctx)
+                 #f]
+
                 [else
-                 (and (printf "invalid index ~a!\n" c) #f)]))
+                 (and (displayln "invalid index!") #f)]))
             (finish)))
 
       (third choice))))
