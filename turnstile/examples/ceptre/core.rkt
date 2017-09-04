@@ -158,6 +158,20 @@
 
 
 
+(define (simplify trm)
+  (match trm
+    [(⊗ a (one)) (simplify a)]
+    [(⊗ (one) b) (simplify b)]
+    [(⊗ a b) (⊗ (simplify a) (simplify b))]
+    [(⊕ a (zero)) (simplify a)]
+    [(⊕ (zero) b) (simplify b)]
+    [(⊕ a b) (⊕ (simplify a) (simplify b))]
+    [(predicate X i args)
+     (predicate X i (map simplify args))]
+    [_ trm]))
+
+
+
 (define (interactive ctx stg)
   (let/ec esc
     (for/fold ([ctx ctx])
@@ -212,7 +226,7 @@
                  (and (displayln "invalid index!") #f)]))
             (finish)))
 
-      (third choice))))
+      (simplify (third choice)))))
 
 
 
