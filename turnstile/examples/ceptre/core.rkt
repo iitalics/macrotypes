@@ -121,14 +121,14 @@
 
          [else '()])]))
 
-  ;; unify : unique sym/unique subs -> (or #f subs)
+  ;; unify : object sym/object subs -> (or #f subs)
   (define (unify lh rh subs)
     (match (hash-ref subs rh rh)
       [(? symbol?) (hash-set subs rh lh)]
       [(== lh) subs]
       [_ #f]))
 
-  ;; unify* : (listof unique) (listof sym/unique) subs -> (or #f subs)
+  ;; unify* : (listof object) (listof sym/object) subs -> (or #f subs)
   (define (unify* lhs rhs subs)
     (for/fold ([subs subs])
               ([lh (in-list lhs)]
