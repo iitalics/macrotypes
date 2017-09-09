@@ -33,6 +33,7 @@
 
   )
 
+#;
 (interactive blocks
              { (on-table a)
                (on-table b)
@@ -40,3 +41,16 @@
                (clear c)
                (clear b)
                arm-free })
+
+
+
+(define Nat : Type)
+(define Z : Nat)
+(define (S Nat) : Nat)
+
+(define (PLUS Nat Nat Nat) : Pred)
+
+(define-stage arith
+  (dup 'a -o (* 'a 'a))
+  (splus (PLUS 'x 'y 'x+y) -o (PLUS (S 'x) 'y (S 'x+y)))
+  )

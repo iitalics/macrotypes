@@ -93,40 +93,42 @@
        (append (sat trm a subs)
                (sat trm b subs))]
 
-      [(object _ i rhs)
-       (find trm i rhs subs)]))
+      [_ (find trm inp subs)]))
 
-  ;; find : trm obj-id (list rh-trm ...) subs -> (list (cons trm' subs) ...)
-  (define (find trm i rhs subs)
+  ;; find : trm obj/sym subs -> (list (cons trm' subs) ...)
+  (define (find trm inp subs)
     (match trm
       [(one) '()]
       [(zero) (list trm subs)]
 
       [(⊗ a b)
-       (append (for/list ([r (in-list (find a i rhs subs))])
+       (append (for/list ([r (in-list (find a inp subs))])
                  (cons (⊗ (car r) b) (cdr r)))
-               (for/list ([r (in-list (find b i rhs subs))])
+               (for/list ([r (in-list (find b inp subs))])
                  (cons (⊗ a (car r)) (cdr r))))]
 
       [(⊕ a b)
-       (for*/list ([r  (in-list (find a i rhs subs))]
-                   [r+ (in-list (find b i rhs (cdr r)))])
+       (for*/list ([r  (in-list (find a inp subs))]
+                   [r+ (in-list (find b inp (cdr r)))])
          r+)]
 
-      [(object _ j lhs)
-       (cond
-         [(and (eq? i j) (unify* lhs rhs subs))
-          => (λ (subs)
-               (list (cons (one) subs)))]
+      [_ (cond
+           [(unify trm inp subs)
+            => (λ (subs-)
+                 (list (cons (one) subs-)))]
 
-         [else '()])]))
+           [else '()])]))
 
   ;; unify : object sym/object subs -> (or #f subs)
   (define (unify lh rh subs)
-    (match (hash-ref subs rh rh)
-      [(? symbol?) (hash-set subs rh lh)]
-      [(== lh) subs]
-      [_ #f]))
+    (match* [lh (hash-ref subs rh rh)]
+      [[_ (? symbol? x)]
+       (hash-set subs x lh)]
+
+      [[(object _ i lhs) (object _ i rhs)]
+       (unify* lhs rhs subs)]
+
+      [[_ _] #f]))
 
   ;; unify* : (listof object) (listof sym/object) subs -> (or #f subs)
   (define (unify* lhs rhs subs)
