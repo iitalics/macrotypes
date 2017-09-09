@@ -1,14 +1,16 @@
-#lang racket
+#lang racket/base
+(require racket/match
+         racket/list
+         (only-in racket/format ~a ~v)
+         (only-in racket/string string-join))
 (provide (all-defined-out))
 
 ;; a term in linear logic
 (struct term () #:transparent
   #:methods gen:custom-write
   [(define (write-proc t p m) (custom-write-term t p m))])
-;;   unique object
-(struct unique term (name id) #:transparent)
-;;   predicate (compound object)
-(struct predicate term (name id args) #:transparent)
+;;   linear object
+(struct object term (name id args) #:transparent)
 ;;   logical combinators
 (struct ⊗ term (a b) #:transparent)
 (struct ⊕ term (a b) #:transparent)
@@ -43,9 +45,9 @@
 
 (define (custom-write-term trm port mode)
   (match trm
-    [(unique N _)
+    [(object N _ '())
      (display N port)]
-    [(predicate N _ ts)
+    [(object N _ ts)
      (display (list* N (map ~v ts)) port)]
     [(⊗ a b)
      (display (list '* (~v a) (~v b)) port)]
@@ -91,10 +93,10 @@
        (append (sat trm a subs)
                (sat trm b subs))]
 
-      [(predicate _ i rhs)
+      [(object _ i rhs)
        (find trm i rhs subs)]))
 
-  ;; find : trm pred-id (list rh-trm ...) subs -> (list (cons trm' subs) ...)
+  ;; find : trm obj-id (list rh-trm ...) subs -> (list (cons trm' subs) ...)
   (define (find trm i rhs subs)
     (match trm
       [(one) '()]
@@ -111,7 +113,7 @@
                    [r+ (in-list (find b i rhs (cdr r)))])
          r+)]
 
-      [(predicate _ j lhs)
+      [(object _ j lhs)
        (cond
          [(and (eq? i j) (unify* lhs rhs subs))
           => (λ (subs)
@@ -139,8 +141,8 @@
     (match trm
       [(⊗ a b) (⊗ (unsub a subs) (unsub b subs))]
 
-      [(predicate X i args)
-       (predicate X i (map (λ (t) (unsub t subs)) args))]
+      [(object X i args)
+       (object X i (map (λ (t) (unsub t subs)) args))]
 
       [(? symbol? x)
        (hash-ref subs x one)]
@@ -166,8 +168,8 @@
     [(⊕ a (zero)) (simplify a)]
     [(⊕ (zero) b) (simplify b)]
     [(⊕ a b) (⊕ (simplify a) (simplify b))]
-    [(predicate X i args)
-     (predicate X i (map simplify args))]
+    [(object X i args)
+     (object X i (map simplify args))]
     [_ trm]))
 
 
@@ -232,18 +234,16 @@
 
 
 
-
-
 (module+ test
   (require rackunit)
 
   (define (mk-block [name "<unnamed>"])
-    (unique name 'BLOCK))
+    (object name 'BLOCK '()))
 
   (define (clear x)
-    (predicate "clear" 'CLEAR (list x)))
+    (object "clear" 'CLEAR (list x)))
   (define (on x y)
-    (predicate "on" 'ON (list x y)))
+    (object "on" 'ON (list x y)))
 
   (define unstack
     (rule '(x y)
