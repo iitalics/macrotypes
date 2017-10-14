@@ -963,49 +963,49 @@
                    ([tv (~seq tvsep:id tvk) ...] ...))
                    tvctx
 
-       #:with (e ...) es
        #:with (tv- ...) (generate-temporaries #'[tv ...])
        #:with (X- ...) (generate-temporaries #'[X ...])
        #:with (x- ...) (generate-temporaries #'[x ...])
 
        #:do [; use internal-definition-context to rebind ctx
              (define intdef (syntax-local-make-definition-context))
-             (define (bind x [rhs #f])
+             (define (bind x rhs)
                (syntax-local-bind-syntaxes (list x) rhs intdef))
              (define (flip e)
                (internal-definition-context-introduce intdef e))
              (define (flip* es)
-               (for/list ([e (in-syntax es)])
-                 (internal-definition-context-introduce intdef e)))
+               (stx-map flip es))
+             (define (expand+intdef e)
+               (local-expand e 'expression '() intdef))
 
              ; bind tyvars tv => tv-
              (for ([tv (in-syntax #'[tv ...])]
                    [tv- (in-syntax #'[tv- ...])]
-                   [tv* (in-syntax #`[(mk-tyvar
-                                       (attachs #'tv- '(tvsep ...) #'(tvk ...)
-                                                #:ev #,kev)) ...])])
-               (bind tv-)
-               (bind tv #`(make-rename-transformer #,(flip tv*))))
+                   [tv* (in-syntax #`[(mk-tyvar (attachs #'tv- '(tvsep ...) #'(tvk ...)
+                                                         #:ev #,kev))
+                                      ...])])
+               (bind tv- #f)
+               (bind tv #`(make-rename-transformer #,tv*)))
 
              ; bind vars x => x-, X => X-  (with transformers)
              (for ([x (in-syntax #'[X ... x ...])]
                    [x- (in-syntax #'[X- ... x- ...])]
-                   [x* (in-syntax #`[(mk-tyvar (attach #'X- ':: (#,kev #'#%type))) ...
-                                     ((current-var-assign) #'x- '(sep ...) #'(τ ...)) ...])])
-               (bind x-)
-               (bind x #`(make-variable-like-transformer #,(flip x*))))]
+                   [x* (in-syntax #`[(mk-tyvar (attach #'X- ':: (#,kev #'#%type)))
+                                     ...
+                                     ((current-var-assign) #'x- '(sep ...) #'(τ ...))
+                                     ...])])
+               (bind x- #f)
+               (bind x #`(make-variable-like-transformer #,x*)))
 
+             ]
        ; local expand expressions using internal definition context
-       #:with (_ (_ e-) ...) (local-expand #'(begin (#%expression e) ...)
-                                           'expression
-                                           '()
-                                           intdef)
+       #:with es- (stx-map expand+intdef es)
 
        ; (list tvs- xs- es- τs)
        (list (flip* #'(tv- ...))
              (flip* #'(X- ... x- ...))
-             #'(e- ...)
-             (stx-map (λ (e) (detach e tag)) #'(e- ...)))]
+             #'es-
+             (stx-map (λ (e) (detach e tag)) #'es-))]
 
       [([x τ] ...) (infer es #:ctx #`([x #,tag τ] ...) #:tvctx tvctx #:tag tag)]))
 
