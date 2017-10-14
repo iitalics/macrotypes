@@ -962,8 +962,8 @@
                                  (stx-map (λ _ #'[(::) (#%type)]) #'(tv ...))))
                    ([tv (~seq tvsep:id tvk) ...] ...))
                    tvctx
-       #:with (e ...) es
 
+       #:with (e ...) es
        #:with (tv- ...) (generate-temporaries #'[tv ...])
        #:with (X- ...) (generate-temporaries #'[X ...])
        #:with (x- ...) (generate-temporaries #'[x ...])
@@ -981,7 +981,7 @@
              ; bind tyvars tv => tv-
              (for ([tv (in-syntax #'[tv ...])]
                    [tv- (in-syntax #'[tv- ...])]
-                   [tv* (in-syntax #'[(mk-tyvar
+                   [tv* (in-syntax #`[(mk-tyvar
                                        (attachs #'tv- '(tvsep ...) #'(tvk ...)
                                                 #:ev #,kev)) ...])])
                (bind tv-)
@@ -990,7 +990,7 @@
              ; bind vars x => x-, X => X-  (with transformers)
              (for ([x (in-syntax #'[X ... x ...])]
                    [x- (in-syntax #'[X- ... x- ...])]
-                   [x* (in-syntax #'[(mk-tyvar (attach #'X- ':: (#,kev #'#%type))) ...
+                   [x* (in-syntax #`[(mk-tyvar (attach #'X- ':: (#,kev #'#%type))) ...
                                      ((current-var-assign) #'x- '(sep ...) #'(τ ...)) ...])])
                (bind x-)
                (bind x #`(make-variable-like-transformer #,(flip x*))))]
