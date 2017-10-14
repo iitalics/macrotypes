@@ -25,9 +25,10 @@
 (define-syntax ==>
   (syntax-parser
     [(_ s-expr next-expr)
+     #:with s (generate-temporary #'s-expr)
      #'(let ([s s-expr])
          (syntax-parameterize
-             ([stack (make-variable-like-transformer #'s)])
+             ([stack (make-rename-transformer #'s)])
            next-expr))]))
 
 (define global-s
