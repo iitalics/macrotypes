@@ -304,10 +304,12 @@
            (define (#%tag? t)        (and (id? t) (free-id=? t #'#%tag)))
            (define (mk-type t)       (attach t 'key2 #'#%tag))
            ;; type? corresponds to "well-formed" types
-           (define (type? t)         (#%tag? (tagoftype t)))
+           (define (default-type? t) (#%tag? (tagoftype t)))
+           (define type? default-type?)
            (define current-type?     (make-parameter type?))
            ;; any-type? corresponds to any type, defaults to type?
-           (define (any-type? t)     (type? t))
+           (define default-any-type? type?)
+           (define any-type? default-type?)
            (define current-any-type? (make-parameter any-type?))
            ;; assigning and retrieving types ----------------------------------
            (define (type-key1) 'key1)
@@ -365,7 +367,7 @@
                        'name (type->str #'any) 'name)
                       #:attr norm #f))
            ;; checking types
-           (define (type=? t1 t2)
+           (define (default-type=? t1 t2)
              ;; (printf "(τ=) t1 = ~a\n" #;τ1 (stx->datum t1))
              ;; (printf "(τ=) t2 = ~a\n" #;τ2 (stx->datum t2))
              (or (and (id? t1) (id? t2) (free-id=? t1 t2))
@@ -384,12 +386,14 @@
                           #'ts1 #'ts2))]
                    [_ (and (stx-pair? t1) (stx-pair? t2)
                            (types=? t1 t2))])))
+           (define type=? default-type=?)
            (define current-type=? (make-parameter type=?))
            (define (types=? τs1 τs2)
              (and (stx-length=? τs1 τs2)
                   (stx-andmap (current-type=?) τs1 τs2)))
            ; extra indirection, enables easily overriding type=? with eg sub?
            ; to add subtyping, without changing any other definitions
+           (define default-typecheck-relation type=?)
            (define current-typecheck-relation (make-parameter type=?))
            ;; convenience fns for current-typecheck-relation
            (define (typecheck? t1 t2)
@@ -416,6 +420,7 @@
              ; - alternative: use syntax-local-expand-expression?
              (add-orig (expand/df τ) τ))
            (define current-type-eval (make-parameter default-type-eval))
+           (define (type-eval τ) ((current-type-eval) τ))
            (define (type-evals τs) #`#,(stx-map (current-type-eval) τs)))
          ;; defining types ----------------------------------------------------
          (define-syntax type-out ;; helps with providing defined types
