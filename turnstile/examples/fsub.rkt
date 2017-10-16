@@ -39,7 +39,8 @@
 ; quasi-kind, but must be type constructor because its arguments are types
 (define-type-constructor <: #:arity >= 0) 
 (begin-for-syntax
-  (current-type? (λ (t) (or (type? t) (<:? (typeof t))))))
+  (define old-type? (current-type?))
+  (current-type? (λ (t) (or (old-type? t) (<:? (typeof t))))))
 
 ;; Type annotations used in two places:
 ;; 1) typechecking the body of 

@@ -308,8 +308,7 @@
            (define current-type?     (make-parameter default-type?))
            (define (type? t) ((current-type?) t))
            ;; any-type? corresponds to any type, defaults to type?
-           (define default-any-type? type?)
-           (define current-any-type? (make-parameter default-any-type?))
+           (define current-any-type? (make-parameter type?))
            (define (any-type? τ1 τ2) ((current-any-type?) τ1 τ2))
            ;; assigning and retrieving types ----------------------------------
            (define (type-key1) 'key1)
