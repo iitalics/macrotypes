@@ -32,11 +32,11 @@
   ;; But we no longer need type? to validate types, instead we can use
   ;; (kind? (typeof t))
   (current-type? (λ (t) (define k (kindof t))
-                    (and k ((current-kind?) k) (not (→? k)))))
+                    (and k (kind? k) (not (→? k)))))
 
   ;; o.w., a valid type is one with any valid kind
   (current-any-type? (λ (t) (define k (kindof t))
-                        (and k ((current-kind?) k)))))
+                        (and k (kind? k)))))
 
 ; must override
 (define-syntax define-type-alias

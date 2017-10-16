@@ -26,7 +26,7 @@
   (current-type? (λ (t) (★? (kindof t))))
   ;; o.w., a valid type is one with any valid kind
   (current-any-type? (λ (t) (define k (kindof t))
-                        (and k ((current-kind?) k))))
+                        (and k (kind? k))))
 
   ;; TODO: I think this can be simplified
   (define (normalize τ)
@@ -96,7 +96,7 @@
 
 (define-kinded-syntax (tyλ bvs:kind-ctx τ_body) ≫
   [[bvs.x ≫ tv- :: bvs.kind] ... ⊢ τ_body ≫ τ_body- ⇒ k_body]
-  #:fail-unless ((current-kind?) #'k_body) ; better err, in terms of τ_body
+  #:fail-unless (kind? #'k_body) ; better err, in terms of τ_body
                 (format "not a valid type: ~a\n" (type->str #'τ_body))
   --------
   [⊢ (λ- (tv- ...) τ_body-) ⇒ (⇒ bvs.kind ... k_body)])

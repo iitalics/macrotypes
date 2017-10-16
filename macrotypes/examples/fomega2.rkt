@@ -30,11 +30,11 @@
   ;; well-formed types, eg not types with kind →
   ;; must allow kinds as types, for →
   (current-type? (λ (t) (define k (kindof t))
-                    (and k ((current-kind?) k) (not (→? k)))))
+                    (and k (kind? k) (not (→? k)))))
 
   ;; o.w., a valid type is one with any valid kind
   (current-any-type? (λ (t) (define k (kindof t))
-                        (and k ((current-kind?) k)))))
+                        (and k (kind? k)))))
 
 ;; extend → to serve as both type and kind
 (define-syntax (→ stx)

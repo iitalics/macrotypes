@@ -18,13 +18,14 @@
 ;; => extend current-kind? to recognize #%type
 ;; <= define ★ as rename-transformer expanding to #%type
 (begin-for-syntax
-  (current-kind? (λ (k) (or (#%type? k) (kind? k))))
+  (define old-kind? (current-kind?))
+  (current-kind? (λ (k) (or (#%type? k) (old-kind? k))))
   ;; well-formed types, ie not types with ⇒ kind
   (current-type? (λ (t) (define k (kindof t))
-                   (and k ((current-kind?) k) (not (⇒? k)))))
+                   (and k (kind? k) (not (⇒? k)))))
   ;; any valid type (includes ⇒-kinded types)
   (current-any-type? (λ (t) (define k (kindof t))
-                       (and k ((current-kind?) k)))))
+                       (and k (kind? k)))))
 
 (begin-for-syntax
   (define ★? #%type?)
@@ -92,7 +93,7 @@
 (define-typed-syntax tyλ
   [(_ bvs:kind-ctx τ_body)
    #:with (tvs- τ_body- k_body) (infer/ctx+erase #'bvs #'τ_body #:tag '::)
-   #:fail-unless ((current-kind?) #'k_body)
+   #:fail-unless (kind? #'k_body)
                  (format "not a valid type: ~a\n" (type->str #'τ_body))
    (assign-kind #'(λ- tvs- τ_body-) #'(⇒ bvs.kind ... k_body))])
 

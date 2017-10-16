@@ -305,12 +305,12 @@
            (define (mk-type t)       (attach t 'key2 #'#%tag))
            ;; type? corresponds to "well-formed" types
            (define (default-type? t) (#%tag? (tagoftype t)))
-           (define type? default-type?)
-           (define current-type?     (make-parameter type?))
+           (define current-type?     (make-parameter default-type?))
+           (define (type? t) ((current-type?) t))
            ;; any-type? corresponds to any type, defaults to type?
            (define default-any-type? type?)
-           (define any-type? default-type?)
-           (define current-any-type? (make-parameter any-type?))
+           (define current-any-type? (make-parameter default-any-type?))
+           (define (any-type? τ1 τ2) ((current-any-type?) τ1 τ2))
            ;; assigning and retrieving types ----------------------------------
            (define (type-key1) 'key1)
            (define (type-key2) 'key2)
@@ -325,7 +325,7 @@
              #:attributes (norm)
              (pattern τ
               #:with norm ((current-type-eval) #'τ)
-              #:fail-unless ((current-type?) #'norm)
+              #:fail-unless (type? #'norm)
               (format "~a (~a:~a) not a well-formed ~a: ~a"
                       (syntax-source #'τ) (syntax-line #'τ) (syntax-column #'τ)
                       'name (type->str #'τ))))
@@ -333,7 +333,7 @@
              #:attributes (norm)
              (pattern τ
               #:with norm ((current-type-eval) #'τ)
-              #:fail-unless ((current-any-type?) #'norm)
+              #:fail-unless (any-type? #'norm)
               (format "~a (~a:~a) not a valid ~a: ~a"
                       (syntax-source #'τ) (syntax-line #'τ) (syntax-column #'τ)
                       'name (type->str #'τ))))
@@ -386,8 +386,8 @@
                           #'ts1 #'ts2))]
                    [_ (and (stx-pair? t1) (stx-pair? t2)
                            (types=? t1 t2))])))
-           (define type=? default-type=?)
-           (define current-type=? (make-parameter type=?))
+           (define current-type=? (make-parameter default-type=?))
+           (define (type=? τ1 τ2) ((current-type=?) τ1 τ2))
            (define (types=? τs1 τs2)
              (and (stx-length=? τs1 τs2)
                   (stx-andmap (current-type=?) τs1 τs2)))

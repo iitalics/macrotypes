@@ -17,12 +17,13 @@
 ;; => extend current-kind? to recognize #%type
 ;; <= define ★ as rename-transformer expanding to #%type
 (begin-for-syntax
-  (current-kind? (λ (k) (or (#%type? k) (kind? k))))
+  (define old-kind? (current-kind?))
+  (current-kind? (λ (k) (or (#%type? k) (old-kind? k))))
   ;; any valid type (includes ⇒-kinded types)
   (current-any-type? (λ (t) (define k (kindof t))
-                        (and k ((current-kind?) k))))
+                        (and k (kind? k))))
   ;; well-formed types, ie not types with ⇒ kind
-  (current-type? (λ (t) (and ((current-any-type?) t)
+  (current-type? (λ (t) (and (any-type? t)
                              (not (⇒? (kindof t)))))))
 
 (begin-for-syntax
@@ -86,7 +87,7 @@
 ;; - see fomega2.rkt for example with no explicit tyλ and tyapp
 (define-kinded-syntax (tyλ bvs:kind-ctx τ_body) ≫
   [[bvs.x ≫ tv- :: bvs.kind] ... ⊢ τ_body ≫ τ_body- ⇒ k_body]
-  #:fail-unless ((current-kind?) #'k_body) ; better err, in terms of τ_body
+  #:fail-unless (kind? #'k_body) ; better err, in terms of τ_body
                 (format "not a valid type: ~a\n" (type->str #'τ_body))
   --------
   [⊢ (λ- (tv- ...) τ_body-) ⇒ (⇒ bvs.kind ... k_body)])

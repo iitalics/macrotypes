@@ -21,6 +21,7 @@
 ;; types and kinds are now mixed, due to #%app and λ
 (begin-for-syntax
   (define old-kind? (current-kind?))
+  (define old-type? (current-type?))
   (current-kind? (λ (k) (or (#%type? k) (old-kind? k) (#%type? (typeof k)))))
   ;; Try to keep "type?" backward compatible with its uses so far,
   ;; eg in the definition of λ or previous type constuctors.
@@ -28,7 +29,7 @@
   ;; So now "type?" no longer validates types, rather it's a subset.
   ;; But we no longer need type? to validate types, instead we can use
   ;; (kind? (typeof t))
-  (current-type? (λ (t) (or (type? t)
+  (current-type? (λ (t) (or (old-type? t)
                             (let ([k (typeof t)])
                               (or (★? k) (∀★? k)))
-                            ((current-kind?) t)))))
+                            (kind? t)))))

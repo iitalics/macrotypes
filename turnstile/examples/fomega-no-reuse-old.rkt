@@ -29,7 +29,7 @@
   ;; (need this for define-primop, which still uses type stx-class)
   (current-type? (λ (t) (★? (kindof t))))
   ;; o.w., a valid type is one with any valid kind
-  (current-any-type? (λ (t) ((current-kind?) (kindof t))))
+  (current-any-type? (λ (t) (kind? (kindof t))))
 
   ;; TODO: I think this can be simplified
   (define (normalize τ)
@@ -100,7 +100,7 @@
 
 (define-kinded-syntax (tyλ bvs:kind-ctx τ_body) ≫
   [[bvs.x ≫ tv- : bvs.kind] ... ⊢ τ_body ≫ τ_body- ⇒ k_body]
-  #:fail-unless ((current-kind?) #'k_body)
+  #:fail-unless (kind? #'k_body)
                 (format "not a valid type: ~a\n" (type->str #'τ_body))
   --------
   [⊢ (λ- (tv- ...) τ_body-) ⇒ (⇒ bvs.kind ... k_body)])
