@@ -1103,7 +1103,9 @@
     (add-orig stx (get-orig orig)))
   (define (has-orig? stx)
     (and (syntax-property stx 'orig) #true))
-  (define (type->str ty)
+
+  ;; type to string conversion
+  (define (default-type->str ty)
     (define τ (get-orig ty))
     (cond
       [(identifier? τ) (symbol->string (syntax->datum τ))]
@@ -1111,6 +1113,8 @@
                                   #:before-first "("
                                   #:after-last ")")]
       [else (format "~s" (syntax->datum τ))]))
+  (define current-type->str (make-parameter default-type->str))
+  (define (type->str ty) ((current-type->str) ty))
   (define (types->str tys #:sep [sep ", "])
     (string-join (stx-map type->str tys) sep)))
 
